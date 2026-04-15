@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# App data
+app.db
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+
+# Secrets / env
+.env
+*.env

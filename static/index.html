@@ -1,0 +1,1584 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D打印自动报价系统 DEMO</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 min-h-screen p-4 lg:p-6">
+    <div class="max-w-[1600px] mx-auto bg-white rounded-xl shadow-md overflow-hidden">
+        <div class="p-8">
+            <div class="flex items-start justify-between gap-4 mb-6">
+                <div>
+                    <div class="uppercase tracking-wide text-sm text-indigo-500 font-semibold mb-1">3D Printing Parts Automated Quoting System</div>
+                    <h2 class="text-2xl font-bold text-gray-900">3D打印件自动报价系统</h2>
+                </div>
+                <div id="auth-area" class="flex items-center gap-2">
+                    <button id="open-login-btn" type="button" class="text-sm px-3 py-1.5 border border-indigo-200 text-indigo-700 rounded-md hover:bg-indigo-50">登录</button>
+                    <div id="user-menu" class="hidden relative">
+                        <button id="user-menu-btn" type="button" class="text-sm px-3 py-1.5 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"></button>
+                        <div id="user-dropdown" class="hidden absolute right-0 mt-2 w-32 rounded-md border border-gray-200 bg-white shadow-lg z-20">
+                            <button id="open-user-center-btn" type="button" class="w-full text-left text-xs px-3 py-2 hover:bg-gray-50">用户中心</button>
+                            <button id="logout-btn" type="button" class="w-full text-left text-xs px-3 py-2 text-red-600 hover:bg-red-50">退出登录</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="space-y-6">
+            <!-- 结果展示区 -->
+            <div id="result-container" class="w-full">
+                <h3 class="text-lg leading-6 font-medium text-gray-900 mb-2">报价结果</h3>
+                <div class="bg-gray-50 overflow-hidden shadow rounded-lg border border-gray-200">
+                    <div class="px-4 py-5 sm:p-6">
+                        <dl class="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-4">
+                            <div>
+                                <dt class="text-sm font-medium text-gray-500">文件总数</dt>
+                                <dd class="mt-1 text-sm text-gray-900" id="sum-total-files">-</dd>
+                            </div>
+                            <div>
+                                <dt class="text-sm font-medium text-gray-500">成功 / 失败</dt>
+                                <dd class="mt-1 text-sm text-gray-900" id="sum-status">-</dd>
+                            </div>
+                            <div>
+                                <dt class="text-sm font-medium text-gray-500">总费用 (CNY)</dt>
+                                <dd class="mt-1 text-2xl font-semibold text-indigo-600" id="sum-total-cost">-</dd>
+                            </div>
+                            <div>
+                                <dt class="text-sm font-medium text-gray-500">总时间 (h)</dt>
+                                <dd class="mt-1 text-sm text-gray-900" id="sum-total-time">-</dd>
+                            </div>
+                        </dl>
+
+                        <div class="mt-6 overflow-x-auto">
+                            <table class="min-w-full text-[11px] text-left border border-gray-200 rounded-md overflow-hidden whitespace-nowrap">
+                                <thead class="bg-gray-100 text-gray-700">
+                                    <tr>
+                                        <th class="px-2 py-1.5">文件名</th>
+                                        <th class="px-2 py-1.5">预览</th>
+                                        <th class="px-2 py-1.5">材料</th>
+                                        <th class="px-2 py-1.5">颜色</th>
+                                        <th class="px-2 py-1.5">数量</th>
+                                        <th class="px-2 py-1.5">几何信息</th>
+                                        <th class="px-2 py-1.5">重量(g)</th>
+                                        <th class="px-2 py-1.5">时间(h)</th>
+                                        <th class="px-2 py-1.5">单价</th>
+                                        <th class="px-2 py-1.5">总价</th>
+                                        <th class="px-2 py-1.5">状态/错误</th>
+                                        <th class="px-2 py-1.5">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="batch-results-body" class="bg-white">
+                                    <tr class="border-t border-gray-100">
+                                        <td class="px-2 py-2 text-gray-500" colspan="12">暂无数据，请在表格底部上传并自动报价</td>
+                                    </tr>
+                                </tbody>
+                                <tfoot class="bg-white border-t border-gray-200">
+                                    <tr>
+                                        <td class="px-2 py-3" colspan="12">
+                                            <form id="quote-form" class="space-y-3">
+                                                <div class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md bg-gray-50 hover:bg-gray-100 transition-colors">
+                                                    <div class="space-y-1 text-center">
+                                                        <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
+                                                            <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                                        </svg>
+                                                        <div class="flex text-sm text-gray-600 justify-center">
+                                                            <label for="file-upload" class="relative cursor-pointer rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500">
+                                                                <span>选择文件</span>
+                                                                <input id="file-upload" name="files" type="file" class="sr-only" accept=".stl,.stp,.step,.obj,.3mf" multiple required>
+                                                            </label>
+                                                        </div>
+                                                        <p id="file-name" class="text-xs text-gray-500 mt-2">未选择文件（最多20个，单文件需小于100MB）</p>
+                                                        <div class="text-sm font-medium text-gray-700 mt-2">上传 3D 模型（stl/stp/step/obj/3mf，最多20个，单文件&lt;100MB）</div>
+                                                    </div>
+                                                </div>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            </div>
+            
+            <!-- 错误提示 -->
+            <div id="error-container" class="mt-4 hidden p-4 bg-red-50 border-l-4 border-red-400 rounded-md">
+                <p class="text-sm text-red-700 font-medium" id="error-msg"></p>
+            </div>
+
+            <!-- 登录弹窗 -->
+            <div id="login-modal" class="hidden fixed inset-0 z-50">
+                <div id="login-backdrop" class="absolute inset-0 bg-black/50"></div>
+                <div class="relative z-10 h-full w-full flex items-center justify-center p-4">
+                    <div class="w-full max-w-sm bg-white rounded-lg shadow-xl overflow-hidden">
+                        <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                            <h4 class="text-sm font-semibold text-gray-800">用户登录</h4>
+                            <button id="login-close-btn" type="button" class="text-gray-500 hover:text-gray-700">关闭</button>
+                        </div>
+                        <div class="p-4 space-y-3">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">用户名</label>
+                                <input id="login-username" type="text" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" placeholder="请输入用户名" />
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">密码</label>
+                                <input id="login-password" type="password" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" placeholder="请输入密码" />
+                            </div>
+                            <p id="login-error" class="hidden text-xs text-red-600"></p>
+                            <div class="grid grid-cols-2 gap-2">
+                                <button id="login-submit-btn" type="button" class="w-full py-2 px-3 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700">登录</button>
+                                <button id="register-submit-btn" type="button" class="w-full py-2 px-3 rounded-md border border-indigo-300 text-indigo-700 text-sm hover:bg-indigo-50">注册</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 报价参数弹窗 -->
+            <div id="options-modal" class="hidden fixed inset-0 z-50">
+                <div id="options-backdrop" class="absolute inset-0 bg-black/50"></div>
+                <div class="relative z-10 h-full w-full flex items-center justify-center p-4">
+                    <div class="w-full max-w-md bg-white rounded-lg shadow-xl overflow-hidden">
+                        <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                            <h4 class="text-sm font-semibold text-gray-800">修改报价参数</h4>
+                            <button id="options-close-btn" type="button" class="text-gray-500 hover:text-gray-700">关闭</button>
+                        </div>
+                        <div class="p-4 space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">材料</label>
+                                <select id="opt-material" class="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md text-sm">
+                                    <!-- 动态生成 -->
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">颜色</label>
+                                <select id="opt-color" class="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md text-sm">
+                                    <!-- 动态生成 -->
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">数量</label>
+                                <input id="opt-quantity" type="number" min="1" value="1" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" />
+                            </div>
+                            <div class="pt-2">
+                                <button id="options-save-btn" type="button" class="w-full py-2 px-3 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700">保存参数</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 用户中心弹窗 -->
+            <div id="user-center-modal" class="hidden fixed inset-0 z-50">
+                <div id="user-center-backdrop" class="absolute inset-0 bg-black/50"></div>
+                <div class="relative z-10 h-full w-full flex items-center justify-center p-4">
+                    <div class="w-full max-w-2xl bg-white rounded-lg shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
+                        <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                            <h4 class="text-sm font-semibold text-gray-800">用户中心 - 偏好设置</h4>
+                            <button id="user-center-close-btn" type="button" class="text-gray-500 hover:text-gray-700">关闭</button>
+                        </div>
+                        <div class="p-4 overflow-y-auto flex-1 space-y-6">
+                            <!-- 材料设置 -->
+                            <div>
+                                <div class="flex justify-between items-center mb-2">
+                                    <h5 class="text-sm font-medium text-gray-700">自定义材料</h5>
+                                    <button id="add-material-btn" type="button" class="text-xs text-indigo-600 hover:text-indigo-800">+ 添加材料</button>
+                                </div>
+                                <div class="overflow-x-auto">
+                                    <table class="min-w-full text-xs text-left border border-gray-200 rounded-md">
+                                        <thead class="bg-gray-50 text-gray-600">
+                                            <tr>
+                                                <th class="px-2 py-1.5 w-1/4">材料名称</th>
+                                                <th class="px-2 py-1.5 w-1/6">密度 (g/cm³)</th>
+                                                <th class="px-2 py-1.5 w-1/6">单价 (元/KG)</th>
+                                                <th class="px-2 py-1.5 w-1/3">可选颜色（逗号分隔）</th>
+                                                <th class="px-2 py-1.5 w-1/12 text-center">操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="materials-tbody" class="bg-white divide-y divide-gray-100">
+                                            <!-- 材料行动态插入 -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <!-- 颜色绑定 -->
+                            <div>
+                                <div class="flex justify-between items-center mb-2">
+                                    <h5 class="text-sm font-medium text-gray-700">计算公式</h5>
+                                    <div class="flex items-center gap-2">
+                                        <p id="formula-validate-msg" class="text-xs hidden"></p>
+                                        <button id="formula-validate-btn" type="button" class="text-xs text-indigo-600 hover:text-indigo-800">校验公式</button>
+                                        <button id="formula-reset-btn" type="button" class="text-xs text-indigo-600 hover:text-indigo-800">重置默认</button>
+                                    </div>
+                                </div>
+                                <div id="formula-container" class="space-y-3">
+                                    <div>
+                                        <label class="block text-xs text-gray-600">单件成本公式（unit_cost_cny）</label>
+                                        <textarea id="cfg-unit-cost-formula" rows="2" class="mt-1 w-full border border-gray-300 rounded-sm text-xs px-2 py-1 font-mono"></textarea>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-600">总价公式（cost_cny）</label>
+                                        <textarea id="cfg-total-cost-formula" rows="2" class="mt-1 w-full border border-gray-300 rounded-sm text-xs px-2 py-1 font-mono"></textarea>
+                                    </div>
+                                    <div class="text-[11px] text-gray-500 leading-snug">
+                                        支持英文变量与中文别名；支持函数：max(), min(), abs(), round()
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <button id="formula-vars-toggle-btn" type="button" class="text-xs text-indigo-600 hover:text-indigo-800">展开变量字典</button>
+                                    </div>
+                                    <div id="formula-vars-panel" class="hidden overflow-x-auto">
+                                        <table class="min-w-full text-[11px] text-left border border-gray-200 rounded-md overflow-hidden">
+                                            <thead class="bg-gray-50 text-gray-600">
+                                                <tr>
+                                                    <th class="px-2 py-1.5">中文含义</th>
+                                                    <th class="px-2 py-1.5">中文变量</th>
+                                                    <th class="px-2 py-1.5">英文变量</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="bg-white divide-y divide-gray-100">
+                                                <tr><td class="px-2 py-1.5">有效重量（克）</td><td class="px-2 py-1.5">有效重量_g</td><td class="px-2 py-1.5">effective_weight_g</td></tr>
+                                                <tr><td class="px-2 py-1.5">材料单价（元/KG）</td><td class="px-2 py-1.5">材料单价_元每kg</td><td class="px-2 py-1.5">price_per_kg</td></tr>
+                                                <tr><td class="px-2 py-1.5">单件打印时间（小时）</td><td class="px-2 py-1.5">单件时间_h</td><td class="px-2 py-1.5">unit_time_h</td></tr>
+                                                <tr><td class="px-2 py-1.5">机台费（元/小时）</td><td class="px-2 py-1.5">机台费_元每小时</td><td class="px-2 py-1.5">machine_hourly_rate_cny</td></tr>
+                                                <tr><td class="px-2 py-1.5">后处理费（元/件）</td><td class="px-2 py-1.5">后处理费_元每件</td><td class="px-2 py-1.5">post_process_fee_per_part_cny</td></tr>
+                                                <tr><td class="px-2 py-1.5">数量</td><td class="px-2 py-1.5">数量</td><td class="px-2 py-1.5">quantity</td></tr>
+                                                <tr><td class="px-2 py-1.5">上机/调机费（元/模型）</td><td class="px-2 py-1.5">上机费</td><td class="px-2 py-1.5">setup_fee_cny</td></tr>
+                                                <tr><td class="px-2 py-1.5">最低起步价（元/模型）</td><td class="px-2 py-1.5">最低起步价</td><td class="px-2 py-1.5">min_job_fee_cny</td></tr>
+                                                <tr><td class="px-2 py-1.5">单件成本（元/件）</td><td class="px-2 py-1.5">单件成本</td><td class="px-2 py-1.5">unit_cost_cny</td></tr>
+                                                <tr><td class="px-2 py-1.5">小计（元）</td><td class="px-2 py-1.5">小计</td><td class="px-2 py-1.5">subtotal_cny</td></tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <h5 class="text-sm font-medium text-gray-700 mb-2">成本与时间参数</h5>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="block text-xs text-gray-600">机台费 (元/小时)</label>
+                                        <input id="cfg-machine-hourly-rate" type="number" step="0.01" class="mt-1 w-full border border-gray-300 rounded-sm text-xs px-2 py-1" />
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-600">上机/调机费 (元/模型)</label>
+                                        <input id="cfg-setup-fee" type="number" step="0.01" class="mt-1 w-full border border-gray-300 rounded-sm text-xs px-2 py-1" />
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-600">最低起步价 (元/模型)</label>
+                                        <input id="cfg-min-job-fee" type="number" step="0.01" class="mt-1 w-full border border-gray-300 rounded-sm text-xs px-2 py-1" />
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-600">材料损耗 (%)</label>
+                                        <input id="cfg-material-waste" type="number" step="0.1" class="mt-1 w-full border border-gray-300 rounded-sm text-xs px-2 py-1" />
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-600">支撑占比 (%)</label>
+                                        <input id="cfg-support-percent" type="number" step="0.1" class="mt-1 w-full border border-gray-300 rounded-sm text-xs px-2 py-1" />
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-600">后处理费 (元/件)</label>
+                                        <input id="cfg-post-per-part" type="number" step="0.01" class="mt-1 w-full border border-gray-300 rounded-sm text-xs px-2 py-1" />
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-600">时间固定开销 (分钟/件)</label>
+                                        <input id="cfg-time-overhead-min" type="number" step="0.1" class="mt-1 w-full border border-gray-300 rounded-sm text-xs px-2 py-1" />
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-600">体积耗时 (分钟/cm³)</label>
+                                        <input id="cfg-time-vol-min-per-cm3" type="number" step="0.01" class="mt-1 w-full border border-gray-300 rounded-sm text-xs px-2 py-1" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="px-4 py-3 border-t border-gray-200 flex justify-end">
+                            <p id="user-center-msg" class="text-xs text-green-600 mr-4 self-center hidden">保存成功</p>
+                            <button id="user-center-save-btn" type="button" class="py-2 px-4 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700">保存设置</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3D 预览弹窗 -->
+            <div id="preview-modal" class="hidden fixed inset-0 z-50">
+                <div id="preview-backdrop" class="absolute inset-0 bg-black/50"></div>
+                <div class="relative z-10 h-full w-full flex items-center justify-center p-4">
+                    <div class="w-full max-w-4xl bg-white rounded-lg shadow-xl overflow-hidden">
+                        <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                            <h4 class="text-sm font-semibold text-gray-800">模型在线预览</h4>
+                            <button id="preview-close-btn" type="button" class="text-gray-500 hover:text-gray-700">关闭</button>
+                        </div>
+                        <div id="preview-container" class="relative w-full h-[70vh] bg-white border border-gray-200">
+                            <div id="preview-placeholder" class="absolute inset-0 flex items-center justify-center text-sm text-gray-500 pointer-events-none">
+                                点击预览按钮加载模型
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 将表单处理逻辑拆分 -->
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const MAX_FILES = 20;
+            const MAX_FILE_SIZE = 100 * 1024 * 1024;
+            const ALLOWED_EXTENSIONS = ['.stl', '.stp', '.step', '.obj', '.3mf'];
+
+            const form = document.getElementById('quote-form');
+            const fileInput = document.getElementById('file-upload');
+            const fileNameDisplay = document.getElementById('file-name');
+            const resultContainer = document.getElementById('result-container');
+            const errorContainer = document.getElementById('error-container');
+            const errorMsg = document.getElementById('error-msg');
+            const openLoginBtn = document.getElementById('open-login-btn');
+            const userMenu = document.getElementById('user-menu');
+            const userMenuBtn = document.getElementById('user-menu-btn');
+            const userDropdown = document.getElementById('user-dropdown');
+            const openUserCenterBtn = document.getElementById('open-user-center-btn');
+            const logoutBtn = document.getElementById('logout-btn');
+            const loginModal = document.getElementById('login-modal');
+            const loginBackdrop = document.getElementById('login-backdrop');
+            const loginCloseBtn = document.getElementById('login-close-btn');
+            const loginUsername = document.getElementById('login-username');
+            const loginPassword = document.getElementById('login-password');
+            const loginSubmitBtn = document.getElementById('login-submit-btn');
+            const registerSubmitBtn = document.getElementById('register-submit-btn');
+            const loginError = document.getElementById('login-error');
+            const optionsSummary = document.getElementById('options-summary');
+            const optionsModal = document.getElementById('options-modal');
+            const optionsBackdrop = document.getElementById('options-backdrop');
+            const optionsCloseBtn = document.getElementById('options-close-btn');
+            const optionsSaveBtn = document.getElementById('options-save-btn');
+            const optMaterial = document.getElementById('opt-material');
+            const optColor = document.getElementById('opt-color');
+            const optQuantity = document.getElementById('opt-quantity');
+            const previewModal = document.getElementById('preview-modal');
+            const previewBackdrop = document.getElementById('preview-backdrop');
+            const previewCloseBtn = document.getElementById('preview-close-btn');
+            const previewContainer = document.getElementById('preview-container');
+            const previewPlaceholder = document.getElementById('preview-placeholder');
+            const batchResultsBody = document.getElementById('batch-results-body');
+            
+            const userCenterModal = document.getElementById('user-center-modal');
+            const userCenterBackdrop = document.getElementById('user-center-backdrop');
+            const userCenterCloseBtn = document.getElementById('user-center-close-btn');
+            const userCenterSaveBtn = document.getElementById('user-center-save-btn');
+            const materialsTbody = document.getElementById('materials-tbody');
+            const addMaterialBtn = document.getElementById('add-material-btn');
+            const formulaResetBtn = document.getElementById('formula-reset-btn');
+            const formulaValidateBtn = document.getElementById('formula-validate-btn');
+            const formulaValidateMsg = document.getElementById('formula-validate-msg');
+            const formulaVarsToggleBtn = document.getElementById('formula-vars-toggle-btn');
+            const formulaVarsPanel = document.getElementById('formula-vars-panel');
+            const userCenterMsg = document.getElementById('user-center-msg');
+            const cfgMachineHourlyRate = document.getElementById('cfg-machine-hourly-rate');
+            const cfgSetupFee = document.getElementById('cfg-setup-fee');
+            const cfgMinJobFee = document.getElementById('cfg-min-job-fee');
+            const cfgMaterialWaste = document.getElementById('cfg-material-waste');
+            const cfgSupportPercent = document.getElementById('cfg-support-percent');
+            const cfgPostPerPart = document.getElementById('cfg-post-per-part');
+            const cfgTimeOverheadMin = document.getElementById('cfg-time-overhead-min');
+            const cfgTimeVolMinPerCm3 = document.getElementById('cfg-time-vol-min-per-cm3');
+            const cfgUnitCostFormula = document.getElementById('cfg-unit-cost-formula');
+            const cfgTotalCostFormula = document.getElementById('cfg-total-cost-formula');
+            
+            const selectedFilesMap = new Map();
+            const thumbnailMap = new Map();
+            let currentResults = [];
+            let pendingQuoteFiles = null;
+            const COLOR_LABELS = {
+                White: "白色",
+                Black: "黑色",
+                Gray: "灰色",
+                Red: "红色",
+                Blue: "蓝色",
+            };
+            const COLOR_KEYS_BY_LABEL = Object.fromEntries(
+                Object.entries(COLOR_LABELS).map(([k, v]) => [v, k])
+            );
+
+            function formatColorLabel(colorKey) {
+                return COLOR_LABELS[colorKey] || colorKey;
+            }
+
+            function normalizeColorToken(token) {
+                const trimmed = String(token || "").trim();
+                if (!trimmed) return "";
+                if (COLOR_KEYS_BY_LABEL[trimmed]) return COLOR_KEYS_BY_LABEL[trimmed];
+                if (COLOR_LABELS[trimmed]) return trimmed;
+                return trimmed;
+            }
+            const quoteOptions = {
+                material: "PLA",
+                color: "White",
+                quantity: 1,
+            };
+            let MATERIAL_OPTIONS = [
+                 { name: "PLA", density: 1.24, price_per_kg: 200.0, colors: ["White", "Black", "Gray", "Red", "Blue"] },
+                 { name: "ABS", density: 1.04, price_per_kg: 250.0, colors: ["White", "Black", "Gray", "Red", "Blue"] },
+                 { name: "Resin", density: 1.11, price_per_kg: 800.0, colors: ["White", "Black", "Gray", "Red", "Blue"] }
+            ];
+            let COLOR_OPTIONS = ["White", "Black", "Gray", "Red", "Blue"];
+            let PRICING_CONFIG = {
+                machine_hourly_rate_cny: 15.0,
+                setup_fee_cny: 0.0,
+                min_job_fee_cny: 0.0,
+                material_waste_percent: 5.0,
+                support_percent_of_model: 0.0,
+                post_process_fee_per_part_cny: 0.0,
+                time_overhead_min: 5.0,
+                time_vol_min_per_cm3: 0.8,
+                time_area_min_per_cm2: 0.0,
+                time_ref_layer_height_mm: 0.2,
+                time_layer_height_exponent: 1.0,
+                time_ref_infill_percent: 20.0,
+                time_infill_coefficient: 1.0,
+                unit_cost_formula: '(effective_weight_g * (price_per_kg / 1000.0)) + (unit_time_h * machine_hourly_rate_cny) + post_process_fee_per_part_cny',
+                total_cost_formula: 'max((unit_cost_cny * quantity) + setup_fee_cny, min_job_fee_cny)',
+            };
+            const TOKEN_STORAGE_KEY = "demo_access_token_v1";
+            const USER_STORAGE_KEY = "demo_user_v1";
+            let currentUser = null;
+            let authToken = "";
+
+            function openLoginModal() {
+                loginError.classList.add('hidden');
+                loginError.textContent = '';
+                loginPassword.value = '';
+                loginModal.classList.remove('hidden');
+            }
+
+            function closeLoginModal() {
+                loginModal.classList.add('hidden');
+            }
+
+            function renderAuthUI() {
+                if (currentUser) {
+                    openLoginBtn.classList.add('hidden');
+                    userMenu.classList.remove('hidden');
+                    userMenuBtn.textContent = `${currentUser.username}`;
+                } else {
+                    openLoginBtn.classList.remove('hidden');
+                    userMenu.classList.add('hidden');
+                    userDropdown.classList.add('hidden');
+                }
+            }
+
+            function loadUserSession() {
+                try {
+                    authToken = localStorage.getItem(TOKEN_STORAGE_KEY) || "";
+                    const rawUser = localStorage.getItem(USER_STORAGE_KEY);
+                    if (!rawUser) return;
+                    const parsedUser = JSON.parse(rawUser);
+                    if (parsedUser && parsedUser.username) currentUser = parsedUser;
+                } catch (e) {
+                    currentUser = null;
+                    authToken = "";
+                }
+            }
+
+            function saveUserSession() {
+                if (!currentUser || !authToken) return;
+                localStorage.setItem(TOKEN_STORAGE_KEY, authToken);
+                localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(currentUser));
+            }
+
+            function clearUserSession() {
+                localStorage.removeItem(TOKEN_STORAGE_KEY);
+                localStorage.removeItem(USER_STORAGE_KEY);
+            }
+
+            async function authFetch(url, options = {}) {
+                const headers = new Headers(options.headers || {});
+                if (authToken) {
+                    headers.set("Authorization", `Bearer ${authToken}`);
+                }
+                const response = await fetch(url, { ...options, headers });
+                if (response.status === 401) {
+                    currentUser = null;
+                    authToken = "";
+                    clearUserSession();
+                    renderAuthUI();
+                }
+                return response;
+            }
+
+            function refreshOptionsSummary() {
+                const colorText = formatColorLabel(quoteOptions.color);
+                if (optionsSummary) {
+                    optionsSummary.textContent = `当前参数：材料 ${quoteOptions.material}，颜色 ${colorText}，数量 ${quoteOptions.quantity}`;
+                }
+            }
+            function recalcSummaryFromCurrentResults() {
+                const successItems = currentResults.filter((i) => i.status === "success");
+                const failedItems = currentResults.filter((i) => i.status === "failed");
+                document.getElementById('sum-total-files').textContent = currentResults.length;
+                document.getElementById('sum-status').textContent = `${successItems.length} / ${failedItems.length}`;
+                document.getElementById('sum-total-cost').textContent = '¥ ' + successItems.reduce((s, i) => s + (i.cost_cny || 0), 0).toFixed(2);
+                document.getElementById('sum-total-time').textContent = successItems.reduce((s, i) => s + (i.estimated_time_h || 0), 0).toFixed(2);
+            }
+
+            async function quoteSingleFileWithOptions(file, options) {
+                const formData = new FormData();
+                formData.append("files", file);
+                formData.append("material", options.material);
+                formData.append("color", options.color);
+                formData.append("quantity", String(options.quantity));
+                const response = await authFetch('/api/quote', { method: 'POST', body: formData });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.detail || data.error || '请求失败，请稍后重试');
+                }
+                return data.results && data.results.length > 0 ? data.results[0] : { filename: file.name, status: "failed", error: "空响应" };
+            }
+
+            // Three.js viewer setup
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xffffff);
+
+            const camera = new THREE.PerspectiveCamera(45, previewContainer.clientWidth / previewContainer.clientHeight, 0.1, 10000);
+            camera.position.set(0, 0, 120);
+
+            const renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(window.devicePixelRatio || 1);
+            renderer.setSize(previewContainer.clientWidth, previewContainer.clientHeight);
+            previewContainer.appendChild(renderer.domElement);
+
+            const controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.08;
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
+            dirLight.position.set(80, 80, 120);
+            scene.add(dirLight);
+
+            const gridHelper = new THREE.GridHelper(200, 20, 0x334155, 0x1e293b);
+            gridHelper.position.y = -40;
+            scene.add(gridHelper);
+
+            const stlLoader = new STLLoader();
+            let currentMesh = null;
+
+            function animate() {
+                requestAnimationFrame(animate);
+                controls.update();
+                renderer.render(scene, camera);
+            }
+            animate();
+
+            function fitCameraToMesh(meshObject) {
+                const box = new THREE.Box3().setFromObject(meshObject);
+                const size = box.getSize(new THREE.Vector3());
+                const center = box.getCenter(new THREE.Vector3());
+                const maxDim = Math.max(size.x, size.y, size.z);
+
+                const fov = camera.fov * (Math.PI / 180);
+                let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
+                cameraZ *= 1.6;
+
+                camera.position.set(center.x, center.y, center.z + cameraZ);
+                camera.near = Math.max(maxDim / 100, 0.1);
+                camera.far = Math.max(maxDim * 20, 1000);
+                camera.updateProjectionMatrix();
+
+                controls.target.copy(center);
+                controls.update();
+            }
+
+            function applyAxonometricRotation(meshObject) {
+                meshObject.rotation.x = -Math.PI / 4;
+                meshObject.rotation.z = Math.PI / 4;
+            }
+
+            function renderSTL(file, colorKey = "Blue") {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const geometry = stlLoader.parse(event.target.result);
+                        geometry.computeVertexNormals();
+                        geometry.center();
+
+                        clearCurrentMesh();
+
+                        const material = new THREE.MeshStandardMaterial({
+                            color: getRenderColorHex(colorKey),
+                            metalness: 0.15,
+                            roughness: 0.65
+                        });
+                        currentMesh = new THREE.Mesh(geometry, material);
+                        currentMesh.rotation.set(0, 0, 0);
+                        scene.add(currentMesh);
+                        fitCameraToMesh(currentMesh);
+                        previewPlaceholder.classList.add('hidden');
+                    } catch (e) {
+                        previewPlaceholder.textContent = '预览失败，请确认 STL 文件有效';
+                        previewPlaceholder.classList.remove('hidden');
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            }
+
+            function clearCurrentMesh() {
+                if (!currentMesh) return;
+                scene.remove(currentMesh);
+                currentMesh.geometry.dispose();
+                currentMesh.material.dispose();
+                currentMesh = null;
+            }
+
+            function buildPlaceholderThumbnail(ext) {
+                const label = (ext || 'file').toUpperCase();
+                const svg = `
+                <svg xmlns="http://www.w3.org/2000/svg" width="200" height="120" viewBox="0 0 200 120">
+                    <defs>
+                        <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+                            <stop offset="0%" stop-color="#ffffff"/>
+                            <stop offset="100%" stop-color="#f8fafc"/>
+                        </linearGradient>
+                    </defs>
+                    <rect width="200" height="120" rx="8" fill="url(#g)"/>
+                    <rect x="12" y="12" width="176" height="96" rx="6" fill="none" stroke="#cbd5e1"/>
+                    <text x="100" y="62" text-anchor="middle" fill="#334155" font-size="18" font-family="Arial, sans-serif" font-weight="700">${label}</text>
+                    <text x="100" y="84" text-anchor="middle" fill="#64748b" font-size="11" font-family="Arial, sans-serif">Static Preview</text>
+                </svg>`;
+                return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+            }
+
+            function getRenderColorHex(colorKey) {
+                const key = normalizeColorToken(colorKey);
+                const palette = {
+                    White: 0xf3f4f6,
+                    Black: 0x111827,
+                    Gray: 0x9ca3af,
+                    Red: 0xef4444,
+                    Blue: 0x3b82f6,
+                    Green: 0x22c55e,
+                    Yellow: 0xeab308,
+                    Orange: 0xf97316,
+                    Purple: 0xa855f7,
+                    Pink: 0xec4899,
+                    Brown: 0x8b5e3c,
+                    白色: 0xf3f4f6,
+                    黑色: 0x111827,
+                    灰色: 0x9ca3af,
+                    红色: 0xef4444,
+                    蓝色: 0x3b82f6,
+                    绿色: 0x22c55e,
+                    黄色: 0xeab308,
+                    橙色: 0xf97316,
+                    紫色: 0xa855f7,
+                    粉色: 0xec4899,
+                    棕色: 0x8b5e3c,
+                };
+                if (palette[key] !== undefined) return palette[key];
+
+                const hex6 = /^#([0-9a-fA-F]{6})$/;
+                const hex3 = /^#([0-9a-fA-F]{3})$/;
+                const ox6 = /^0x([0-9a-fA-F]{6})$/;
+                if (hex6.test(key)) return Number.parseInt(key.slice(1), 16);
+                if (hex3.test(key)) {
+                    const s = key.slice(1);
+                    const expanded = `${s[0]}${s[0]}${s[1]}${s[1]}${s[2]}${s[2]}`;
+                    return Number.parseInt(expanded, 16);
+                }
+                if (ox6.test(key)) return Number.parseInt(key.slice(2), 16);
+
+                // Try CSS color formats like rgb(...), hsl(...), and named colors.
+                try {
+                    const parsed = new THREE.Color();
+                    parsed.setStyle(key);
+                    return parsed.getHex();
+                } catch (e) {}
+
+                // Stable fallback for custom names: same name => same thumbnail color.
+                const raw = String(key || "custom");
+                let hash = 0;
+                for (let i = 0; i < raw.length; i += 1) {
+                    hash = ((hash << 5) - hash) + raw.charCodeAt(i);
+                    hash |= 0;
+                }
+                const hue = Math.abs(hash) % 360;
+                const fallback = new THREE.Color();
+                fallback.setHSL(hue / 360, 0.58, 0.56);
+                return fallback.getHex();
+            }
+
+            async function buildStlThumbnail(file, colorKey = "Blue") {
+                const arrayBuffer = await file.arrayBuffer();
+                const geometry = stlLoader.parse(arrayBuffer);
+                geometry.computeVertexNormals();
+                geometry.center();
+
+                const width = 220;
+                const height = 140;
+                const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+                renderer.setSize(width, height);
+                renderer.setPixelRatio(1);
+
+                const scene = new THREE.Scene();
+                scene.background = new THREE.Color(0xffffff);
+
+                const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 10000);
+                const mesh = new THREE.Mesh(
+                    geometry,
+                    new THREE.MeshStandardMaterial({ color: getRenderColorHex(colorKey), metalness: 0.15, roughness: 0.65 })
+                );
+                applyAxonometricRotation(mesh);
+                scene.add(mesh);
+                scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+                const light = new THREE.DirectionalLight(0xffffff, 0.85);
+                light.position.set(40, 60, 90);
+                scene.add(light);
+
+                const box = new THREE.Box3().setFromObject(mesh);
+                const size = box.getSize(new THREE.Vector3());
+                const center = box.getCenter(new THREE.Vector3());
+                const maxDim = Math.max(size.x, size.y, size.z) || 1;
+                const fov = camera.fov * (Math.PI / 180);
+                let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
+                cameraZ *= 1.7;
+                camera.position.set(center.x, center.y, center.z + cameraZ);
+                camera.lookAt(center);
+                camera.updateProjectionMatrix();
+
+                renderer.render(scene, camera);
+                const dataUrl = renderer.domElement.toDataURL('image/png');
+
+                mesh.geometry.dispose();
+                mesh.material.dispose();
+                renderer.dispose();
+
+                return dataUrl;
+            }
+
+            async function ensureThumbnailForFile(file, colorKey) {
+                const ext = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : '';
+                if (ext !== 'stl') {
+                    thumbnailMap.set(file.name, buildPlaceholderThumbnail(ext));
+                    return;
+                }
+                try {
+                    const thumb = await buildStlThumbnail(file, colorKey);
+                    thumbnailMap.set(file.name, thumb);
+                } catch (e) {
+                    thumbnailMap.set(file.name, buildPlaceholderThumbnail(ext));
+                }
+            }
+
+            async function buildThumbnails(selectedFiles, colorByFilename = {}) {
+                for (const file of selectedFiles) {
+                    const selectedColor = colorByFilename[file.name] || quoteOptions.color;
+                    await ensureThumbnailForFile(file, selectedColor);
+                }
+            }
+
+            function openPreviewModal() {
+                previewModal.classList.remove('hidden');
+                const width = previewContainer.clientWidth || 1000;
+                const height = previewContainer.clientHeight || 700;
+                camera.aspect = width / height;
+                camera.updateProjectionMatrix();
+                renderer.setSize(width, height);
+            }
+
+            function closePreviewModal() {
+                previewModal.classList.add('hidden');
+            }
+
+            function openOptionsModal() {
+                updateDropdowns();
+                optMaterial.value = quoteOptions.material;
+                const rendered = renderColorOptionsForMaterial(optMaterial.value, quoteOptions.color);
+                optColor.innerHTML = rendered.html;
+                optColor.value = rendered.selected;
+                optQuantity.value = String(quoteOptions.quantity);
+                optionsModal.classList.remove('hidden');
+            }
+
+            function closeOptionsModal() {
+                optionsModal.classList.add('hidden');
+            }
+
+            function previewByFilename(filename, ext) {
+                openPreviewModal();
+                if (ext !== 'stl') {
+                    clearCurrentMesh();
+                    previewPlaceholder.textContent = '当前仅支持 STL 在线预览';
+                    previewPlaceholder.classList.remove('hidden');
+                    return;
+                }
+                const file = selectedFilesMap.get(filename);
+                if (!file) {
+                    clearCurrentMesh();
+                    previewPlaceholder.textContent = '未找到对应文件，请重新上传后再预览';
+                    previewPlaceholder.classList.remove('hidden');
+                    return;
+                }
+                previewPlaceholder.textContent = `加载预览中：${filename}`;
+                previewPlaceholder.classList.remove('hidden');
+                const rowData = currentResults.find((i) => i && i.filename === filename);
+                const colorForPreview = (rowData && rowData.color) ? rowData.color : quoteOptions.color;
+                renderSTL(file, colorForPreview);
+            }
+
+            previewCloseBtn.addEventListener('click', closePreviewModal);
+            previewBackdrop.addEventListener('click', closePreviewModal);
+            optionsCloseBtn.addEventListener('click', closeOptionsModal);
+            optionsBackdrop.addEventListener('click', closeOptionsModal);
+            optMaterial.addEventListener('change', () => {
+                const rendered = renderColorOptionsForMaterial(optMaterial.value, optColor.value);
+                optColor.innerHTML = rendered.html;
+                optColor.value = rendered.selected;
+            });
+            optionsSaveBtn.addEventListener('click', () => {
+                const quantity = Number.parseInt(optQuantity.value, 10);
+                if (!Number.isFinite(quantity) || quantity < 1) {
+                    errorMsg.textContent = '数量必须大于等于 1';
+                    errorContainer.classList.remove('hidden');
+                    return;
+                }
+                quoteOptions.material = optMaterial.value;
+                const rendered = renderColorOptionsForMaterial(quoteOptions.material, optColor.value);
+                quoteOptions.color = rendered.selected;
+                quoteOptions.quantity = quantity;
+                refreshOptionsSummary();
+                closeOptionsModal();
+            });
+            async function fetchUserSettings() {
+                if (!authToken) return;
+                try {
+                    const response = await authFetch('/api/user/settings');
+                    if (response.ok) {
+                        const data = await response.json();
+                        MATERIAL_OPTIONS = data.materials || MATERIAL_OPTIONS;
+                        COLOR_OPTIONS = data.colors || COLOR_OPTIONS;
+                        PRICING_CONFIG = data.pricing_config || PRICING_CONFIG;
+                    }
+                } catch (e) {
+                    console.error("Failed to fetch user settings", e);
+                }
+                updateDropdowns();
+            }
+
+            function getMaterialByName(name) {
+                return MATERIAL_OPTIONS.find((m) => m && m.name === name) || null;
+            }
+
+            function getColorsForMaterial(name) {
+                const material = getMaterialByName(name);
+                const colors = material && Array.isArray(material.colors) ? material.colors : [];
+                return colors.length ? colors : COLOR_OPTIONS;
+            }
+
+            function renderColorOptionsForMaterial(name, selectedColor) {
+                const allowedColors = getColorsForMaterial(name);
+                const safeSelected = allowedColors.includes(selectedColor) ? selectedColor : (allowedColors[0] || "");
+                return {
+                    html: allowedColors.map(c => `<option value="${c}" ${c === safeSelected ? 'selected' : ''}>${formatColorLabel(c)}</option>`).join(''),
+                    selected: safeSelected,
+                };
+            }
+
+            function updateDropdowns() {
+                optMaterial.innerHTML = MATERIAL_OPTIONS.map(m => `<option value="${m.name}">${m.name} (¥${Number(m.price_per_kg || 0).toFixed(2)}/KG)</option>`).join('');
+                
+                // reset quote options if they don't exist
+                if (!MATERIAL_OPTIONS.find(m => m.name === quoteOptions.material) && MATERIAL_OPTIONS.length > 0) {
+                    quoteOptions.material = MATERIAL_OPTIONS[0].name;
+                }
+                const rendered = renderColorOptionsForMaterial(quoteOptions.material, quoteOptions.color);
+                optColor.innerHTML = rendered.html;
+                quoteOptions.color = rendered.selected;
+                refreshOptionsSummary();
+            }
+
+            async function handleAuthSuccess(data) {
+                authToken = data.access_token || "";
+                currentUser = data.user || null;
+                if (!authToken || !currentUser) {
+                    throw new Error('登录响应无效，请重试');
+                }
+                saveUserSession();
+                renderAuthUI();
+                await fetchUserSettings();
+                closeLoginModal();
+                errorMsg.textContent = '';
+                errorContainer.classList.add('hidden');
+                const filesToQuote = pendingQuoteFiles;
+                pendingQuoteFiles = null;
+                if (filesToQuote && filesToQuote.length) {
+                    const totalFiles = selectedFilesMap.size || filesToQuote.length;
+                    fileNameDisplay.textContent = `当前列表共 ${totalFiles} 个文件，正在为新增 ${filesToQuote.length} 个文件生成静态图与自动报价...`;
+                    try {
+                        await buildThumbnails(filesToQuote);
+                        await quoteSelectedFiles(filesToQuote);
+                        fileNameDisplay.textContent = `当前列表共 ${selectedFilesMap.size} 个文件，新增 ${filesToQuote.length} 个文件报价完成`;
+                    } catch (err) {
+                        errorMsg.textContent = err.message;
+                        errorContainer.classList.remove('hidden');
+                        fileNameDisplay.textContent = `当前列表共 ${selectedFilesMap.size} 个文件，新增 ${filesToQuote.length} 个文件自动报价失败`;
+                    }
+                }
+            }
+            openLoginBtn.addEventListener('click', openLoginModal);
+            loginCloseBtn.addEventListener('click', closeLoginModal);
+            loginBackdrop.addEventListener('click', closeLoginModal);
+            loginSubmitBtn.addEventListener('click', async () => {
+                const username = (loginUsername.value || '').trim();
+                const password = loginPassword.value || '';
+                if (!username) {
+                    loginError.textContent = '请输入用户名';
+                    loginError.classList.remove('hidden');
+                    return;
+                }
+                if (password.length < 6) {
+                    loginError.textContent = '密码长度至少 6 位';
+                    loginError.classList.remove('hidden');
+                    return;
+                }
+                loginError.classList.add('hidden');
+                try {
+                    const response = await fetch('/api/auth/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, password })
+                    });
+                    const data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.detail || '登录失败');
+                    }
+                    await handleAuthSuccess(data);
+                } catch (err) {
+                    loginError.textContent = err.message || '登录失败';
+                    loginError.classList.remove('hidden');
+                }
+            });
+            registerSubmitBtn.addEventListener('click', async () => {
+                const username = (loginUsername.value || '').trim();
+                const password = loginPassword.value || '';
+                if (!username) {
+                    loginError.textContent = '请输入用户名';
+                    loginError.classList.remove('hidden');
+                    return;
+                }
+                if (password.length < 6) {
+                    loginError.textContent = '密码长度至少 6 位';
+                    loginError.classList.remove('hidden');
+                    return;
+                }
+                loginError.classList.add('hidden');
+                try {
+                    const response = await fetch('/api/auth/register', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, password })
+                    });
+                    const data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.detail || '注册失败');
+                    }
+                    await handleAuthSuccess(data);
+                } catch (err) {
+                    loginError.textContent = err.message || '注册失败';
+                    loginError.classList.remove('hidden');
+                }
+            });
+            userMenuBtn.addEventListener('click', () => {
+                userDropdown.classList.toggle('hidden');
+            });
+            openUserCenterBtn.addEventListener('click', () => {
+                userDropdown.classList.add('hidden');
+                if (!currentUser) return;
+                renderUserCenterUI();
+                userCenterModal.classList.remove('hidden');
+            });
+            
+            userCenterCloseBtn.addEventListener('click', () => {
+                userCenterModal.classList.add('hidden');
+                userCenterMsg.classList.add('hidden');
+            });
+            
+            userCenterBackdrop.addEventListener('click', () => {
+                userCenterModal.classList.add('hidden');
+                userCenterMsg.classList.add('hidden');
+            });
+
+            function renderUserCenterUI() {
+                materialsTbody.innerHTML = MATERIAL_OPTIONS.map((m, idx) => `
+                    <tr>
+                        <td class="px-2 py-2"><input type="text" class="w-full border-gray-300 rounded-sm text-xs px-1 py-1" value="${m.name}" data-idx="${idx}" data-field="name"></td>
+                        <td class="px-2 py-2"><input type="number" step="0.01" class="w-full border-gray-300 rounded-sm text-xs px-1 py-1" value="${m.density}" data-idx="${idx}" data-field="density"></td>
+                        <td class="px-2 py-2"><input type="number" step="0.01" class="w-full border-gray-300 rounded-sm text-xs px-1 py-1" value="${m.price_per_kg}" data-idx="${idx}" data-field="price_per_kg"></td>
+                        <td class="px-2 py-2"><input type="text" class="w-full border border-gray-300 rounded-sm text-xs px-2 py-1" value="${(Array.isArray(m.colors) ? m.colors : []).map(formatColorLabel).join(',')}" data-idx="${idx}" data-field="colors" /></td>
+                        <td class="px-2 py-2 text-center"><button type="button" class="text-red-500 hover:text-red-700 delete-material-btn" data-idx="${idx}">删除</button></td>
+                    </tr>
+                `).join('');
+
+                cfgMachineHourlyRate.value = String(PRICING_CONFIG.machine_hourly_rate_cny ?? 15);
+                cfgSetupFee.value = String(PRICING_CONFIG.setup_fee_cny ?? 0);
+                cfgMinJobFee.value = String(PRICING_CONFIG.min_job_fee_cny ?? 0);
+                cfgMaterialWaste.value = String(PRICING_CONFIG.material_waste_percent ?? 5);
+                cfgSupportPercent.value = String(PRICING_CONFIG.support_percent_of_model ?? 0);
+                cfgPostPerPart.value = String(PRICING_CONFIG.post_process_fee_per_part_cny ?? 0);
+                cfgTimeOverheadMin.value = String(PRICING_CONFIG.time_overhead_min ?? 5);
+                cfgTimeVolMinPerCm3.value = String(PRICING_CONFIG.time_vol_min_per_cm3 ?? 0.8);
+                cfgUnitCostFormula.value = String(PRICING_CONFIG.unit_cost_formula ?? '(effective_weight_g * (price_per_kg / 1000.0)) + (unit_time_h * machine_hourly_rate_cny) + post_process_fee_per_part_cny');
+                cfgTotalCostFormula.value = String(PRICING_CONFIG.total_cost_formula ?? 'max((unit_cost_cny * quantity) + setup_fee_cny, min_job_fee_cny)');
+            }
+
+            function syncPricingFromInputs() {
+                PRICING_CONFIG = {
+                    ...PRICING_CONFIG,
+                    machine_hourly_rate_cny: Number(cfgMachineHourlyRate.value) || 0,
+                    setup_fee_cny: Number(cfgSetupFee.value) || 0,
+                    min_job_fee_cny: Number(cfgMinJobFee.value) || 0,
+                    material_waste_percent: Number(cfgMaterialWaste.value) || 0,
+                    support_percent_of_model: Number(cfgSupportPercent.value) || 0,
+                    post_process_fee_per_part_cny: Number(cfgPostPerPart.value) || 0,
+                    time_overhead_min: Number(cfgTimeOverheadMin.value) || 0,
+                    time_vol_min_per_cm3: Number(cfgTimeVolMinPerCm3.value) || 0,
+                    unit_cost_formula: String(cfgUnitCostFormula.value || '').trim(),
+                    total_cost_formula: String(cfgTotalCostFormula.value || '').trim(),
+                };
+            }
+
+            materialsTbody.addEventListener('change', (e) => {
+                const target = e.target;
+                if (target.tagName === 'INPUT') {
+                    const idx = target.getAttribute('data-idx');
+                    const field = target.getAttribute('data-field');
+                    if (field === 'name') {
+                        MATERIAL_OPTIONS[idx][field] = target.value;
+                    } else if (field === 'density') {
+                        MATERIAL_OPTIONS[idx][field] = parseFloat(target.value) || 1.0;
+                    } else if (field === 'price_per_kg') {
+                        MATERIAL_OPTIONS[idx][field] = parseFloat(target.value) || 0.0;
+                    } else if (field === 'colors') {
+                        const raw = target.value || '';
+                        const colors = raw
+                            .split(',')
+                            .map(normalizeColorToken)
+                            .filter(Boolean);
+                        MATERIAL_OPTIONS[idx].colors = colors;
+                    }
+                }
+            });
+
+            materialsTbody.addEventListener('click', (e) => {
+                if (e.target.classList.contains('delete-material-btn')) {
+                    const idx = e.target.getAttribute('data-idx');
+                    MATERIAL_OPTIONS.splice(idx, 1);
+                    renderUserCenterUI();
+                }
+            });
+
+            addMaterialBtn.addEventListener('click', () => {
+                MATERIAL_OPTIONS.push({ name: "NewMaterial", density: 1.0, price_per_kg: 200.0, colors: ["White"] });
+                renderUserCenterUI();
+            });
+
+            formulaVarsToggleBtn.addEventListener('click', () => {
+                const isHidden = formulaVarsPanel.classList.contains('hidden');
+                if (isHidden) {
+                    formulaVarsPanel.classList.remove('hidden');
+                    formulaVarsToggleBtn.textContent = '收起变量字典';
+                } else {
+                    formulaVarsPanel.classList.add('hidden');
+                    formulaVarsToggleBtn.textContent = '展开变量字典';
+                }
+            });
+
+            formulaResetBtn.addEventListener('click', () => {
+                cfgUnitCostFormula.value = '(effective_weight_g * (price_per_kg / 1000.0)) + (unit_time_h * machine_hourly_rate_cny) + post_process_fee_per_part_cny';
+                cfgTotalCostFormula.value = 'max((unit_cost_cny * quantity) + setup_fee_cny, min_job_fee_cny)';
+                syncPricingFromInputs();
+                formulaValidateMsg.classList.add('hidden');
+            });
+
+            async function validateCurrentFormulas() {
+                if (!authToken) return;
+                try {
+                    syncPricingFromInputs();
+                    const payload = {
+                        unit_cost_formula: PRICING_CONFIG.unit_cost_formula,
+                        total_cost_formula: PRICING_CONFIG.total_cost_formula,
+                    };
+                    const res = await authFetch('/api/formula/validate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                    });
+                    if (res.status === 401) {
+                        formulaValidateMsg.textContent = '登录已失效，请重新登录';
+                        formulaValidateMsg.className = 'text-xs text-red-600';
+                        formulaValidateMsg.classList.remove('hidden');
+                        openLoginModal();
+                        return false;
+                    }
+                    if (res.status === 404) {
+                        formulaValidateMsg.textContent = '校验接口未生效，请重启后端服务';
+                        formulaValidateMsg.className = 'text-xs text-red-600';
+                        formulaValidateMsg.classList.remove('hidden');
+                        return false;
+                    }
+                    let data = null;
+                    try {
+                        data = await res.json();
+                    } catch (e) {
+                        data = null;
+                    }
+                    if (!res.ok || !data || !data.ok) {
+                        const serverDetail = data && data.detail ? String(data.detail) : '';
+                        const unitErr = data && data.unit && data.unit.error ? `单件公式：${data.unit.error}` : '';
+                        const totalErr = data && data.total && data.total.error ? `总价公式：${data.total.error}` : '';
+                        const msg = serverDetail || [unitErr, totalErr].filter(Boolean).join('；') || '公式校验失败';
+                        formulaValidateMsg.textContent = msg;
+                        formulaValidateMsg.className = 'text-xs text-red-600';
+                        formulaValidateMsg.classList.remove('hidden');
+                        return false;
+                    }
+                    formulaValidateMsg.textContent = '公式校验通过';
+                    formulaValidateMsg.className = 'text-xs text-green-600';
+                    formulaValidateMsg.classList.remove('hidden');
+                    setTimeout(() => formulaValidateMsg.classList.add('hidden'), 3000);
+                    return true;
+                } catch (e) {
+                    formulaValidateMsg.textContent = e.message || '公式校验失败';
+                    formulaValidateMsg.className = 'text-xs text-red-600';
+                    formulaValidateMsg.classList.remove('hidden');
+                    return false;
+                }
+            }
+
+            formulaValidateBtn.addEventListener('click', async () => {
+                await validateCurrentFormulas();
+            });
+
+            [
+                cfgMachineHourlyRate,
+                cfgSetupFee,
+                cfgMinJobFee,
+                cfgMaterialWaste,
+                cfgSupportPercent,
+                cfgPostPerPart,
+                cfgTimeOverheadMin,
+                cfgTimeVolMinPerCm3,
+                cfgUnitCostFormula,
+                cfgTotalCostFormula,
+            ].forEach((el) => el.addEventListener('change', syncPricingFromInputs));
+
+            userCenterSaveBtn.addEventListener('click', async () => {
+                if (!authToken) return;
+                try {
+                    const formulaOk = await validateCurrentFormulas();
+                    if (!formulaOk) return;
+                    syncPricingFromInputs();
+                    const payload = {
+                        materials: MATERIAL_OPTIONS,
+                        pricing_config: PRICING_CONFIG
+                    };
+                    const res = await authFetch('/api/user/settings', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (res.status === 401) {
+                        userCenterModal.classList.add('hidden');
+                        openLoginModal();
+                        return;
+                    }
+                    if (!res.ok) {
+                        let data = null;
+                        try {
+                            data = await res.json();
+                        } catch (e) {
+                            data = null;
+                        }
+                        const msg = data && data.detail ? String(data.detail) : '保存失败';
+                        throw new Error(msg);
+                    }
+                    
+                    userCenterMsg.classList.remove('hidden');
+                    setTimeout(() => userCenterMsg.classList.add('hidden'), 3000);
+                    COLOR_OPTIONS = Array.from(new Set(MATERIAL_OPTIONS.flatMap((m) => Array.isArray(m.colors) ? m.colors : [])));
+                    updateDropdowns();
+                    normalizeResultsWithCurrentOptions();
+                    renderResultsTable();
+                    recalcSummaryFromCurrentResults();
+                    userCenterModal.classList.add('hidden');
+                    await reQuoteAllSelectedFiles('按新设置重算报价');
+                } catch (e) {
+                    alert(e.message);
+                }
+            });
+
+            logoutBtn.addEventListener('click', () => {
+                currentUser = null;
+                authToken = "";
+                clearUserSession();
+                renderAuthUI();
+                userDropdown.classList.add('hidden');
+            });
+            document.addEventListener('click', (event) => {
+                if (!userMenu.contains(event.target)) {
+                    userDropdown.classList.add('hidden');
+                }
+            });
+            batchResultsBody.addEventListener('click', (event) => {
+                const deleteBtn = event.target.closest('[data-delete-file]');
+                if (deleteBtn) {
+                    const filename = deleteBtn.getAttribute('data-delete-file');
+                    selectedFilesMap.delete(filename);
+                    thumbnailMap.delete(filename);
+                    currentResults = currentResults.filter((i) => i && i.filename !== filename);
+                    renderResultsTable();
+                    recalcSummaryFromCurrentResults();
+                    if (selectedFilesMap.size === 0) {
+                        fileNameDisplay.textContent = '未选择文件（最多20个，单文件需小于100MB）';
+                        fileNameDisplay.classList.remove('text-indigo-600', 'font-medium');
+                    } else {
+                        fileNameDisplay.textContent = `当前列表共 ${selectedFilesMap.size} 个文件`;
+                        fileNameDisplay.classList.add('text-indigo-600', 'font-medium');
+                    }
+                    closePreviewModal();
+                    return;
+                }
+                const btn = event.target.closest('[data-preview-file]');
+                if (!btn) return;
+                const filename = btn.getAttribute('data-preview-file');
+                const ext = btn.getAttribute('data-preview-ext');
+                previewByFilename(filename, ext);
+            });
+            batchResultsBody.addEventListener('change', async (event) => {
+                const target = event.target;
+                if (!target.classList.contains('row-edit')) return;
+                if (!authToken) {
+                    errorMsg.textContent = '请先登录后再修改报价参数';
+                    errorContainer.classList.remove('hidden');
+                    openLoginModal();
+                    return;
+                }
+                const row = target.closest('tr[data-row-file]');
+                if (!row) return;
+                const filename = row.getAttribute('data-row-file');
+                const file = selectedFilesMap.get(filename);
+                if (!file) return;
+
+                const materialSelect = row.querySelector('[data-field="material"]');
+                const colorSelect = row.querySelector('[data-field="color"]');
+                const material = materialSelect.value;
+                const rendered = renderColorOptionsForMaterial(material, colorSelect.value);
+                if (target === materialSelect) {
+                    colorSelect.innerHTML = rendered.html;
+                    colorSelect.value = rendered.selected;
+                }
+                const color = rendered.selected;
+                const quantity = Number.parseInt(row.querySelector('[data-field="quantity"]').value, 10);
+                if (!Number.isFinite(quantity) || quantity < 1) {
+                    errorMsg.textContent = '数量必须大于等于 1';
+                    errorContainer.classList.remove('hidden');
+                    return;
+                }
+                errorContainer.classList.add('hidden');
+                row.querySelector('[data-role="status-cell"]').textContent = '重算中...';
+                row.querySelector('[data-role="status-cell"]').className = 'px-2 py-1.5 text-amber-600';
+
+                try {
+                    await ensureThumbnailForFile(file, color);
+                    const updated = await quoteSingleFileWithOptions(file, { material, color, quantity });
+                    const idx = currentResults.findIndex((i) => i.filename === filename);
+                    if (idx >= 0) currentResults[idx] = updated;
+                    renderResultsTable();
+                    recalcSummaryFromCurrentResults();
+                } catch (err) {
+                    errorMsg.textContent = err.message;
+                    errorContainer.classList.remove('hidden');
+                    row.querySelector('[data-role="status-cell"]').textContent = '重算失败';
+                    row.querySelector('[data-role="status-cell"]').className = 'px-2 py-1.5 text-red-600';
+                }
+            });
+
+            function mergeResultsByFilename(incomingResults) {
+                const idxByFilename = new Map();
+                currentResults.forEach((item, idx) => {
+                    if (item && item.filename) idxByFilename.set(item.filename, idx);
+                });
+                (incomingResults || []).forEach((item) => {
+                    if (!item || !item.filename) return;
+                    const existingIdx = idxByFilename.get(item.filename);
+                    if (existingIdx === undefined) {
+                        idxByFilename.set(item.filename, currentResults.length);
+                        currentResults.push(item);
+                        return;
+                    }
+                    currentResults[existingIdx] = item;
+                });
+            }
+
+            function normalizeResultsWithCurrentOptions() {
+                const materialNames = new Set(MATERIAL_OPTIONS.map((m) => m && m.name).filter(Boolean));
+                currentResults = currentResults.map((item) => {
+                    if (!item || !item.filename) return item;
+                    const next = { ...item };
+                    const selectedMaterial = materialNames.has(next.material) ? next.material : quoteOptions.material;
+                    next.material = selectedMaterial;
+                    const allowedColors = getColorsForMaterial(selectedMaterial);
+                    const color = allowedColors.includes(next.color) ? next.color : (allowedColors[0] || quoteOptions.color);
+                    next.color = color;
+                    const q = Number.parseInt(next.quantity, 10);
+                    next.quantity = Number.isFinite(q) && q >= 1 ? q : (quoteOptions.quantity || 1);
+                    return next;
+                });
+            }
+
+            async function reQuoteAllSelectedFiles(reasonLabel) {
+                if (!authToken) return;
+                const files = Array.from(selectedFilesMap.values());
+                if (!files.length) return;
+                errorMsg.textContent = '';
+                errorContainer.classList.add('hidden');
+                normalizeResultsWithCurrentOptions();
+                renderResultsTable();
+                recalcSummaryFromCurrentResults();
+
+                fileNameDisplay.classList.add('text-indigo-600', 'font-medium');
+                for (let i = 0; i < files.length; i += 1) {
+                    const file = files[i];
+                    const existing = currentResults.find((r) => r && r.filename === file.name) || null;
+                    const material = existing && existing.material ? existing.material : quoteOptions.material;
+                    const allowedColors = getColorsForMaterial(material);
+                    const color = existing && existing.color && allowedColors.includes(existing.color) ? existing.color : (allowedColors[0] || quoteOptions.color);
+                    const quantityRaw = existing && existing.quantity ? existing.quantity : quoteOptions.quantity;
+                    const quantity = Math.max(1, Number.parseInt(quantityRaw, 10) || 1);
+                    fileNameDisplay.textContent = `${reasonLabel}：${i + 1}/${files.length}（${file.name}）`;
+                    try {
+                        await ensureThumbnailForFile(file, color);
+                        const updated = await quoteSingleFileWithOptions(file, { material, color, quantity });
+                        mergeResultsByFilename([updated]);
+                    } catch (err) {
+                        mergeResultsByFilename([{ filename: file.name, status: 'failed', error: err.message || '重算失败', material, color, quantity }]);
+                    }
+                    renderResultsTable();
+                    recalcSummaryFromCurrentResults();
+                }
+                fileNameDisplay.textContent = `${reasonLabel}完成（共 ${files.length} 个文件）`;
+            }
+
+            async function quoteSelectedFiles(selectedFiles) {
+                const formData = new FormData();
+                selectedFiles.forEach((file) => formData.append("files", file));
+                formData.append("material", quoteOptions.material);
+                formData.append("color", quoteOptions.color);
+                formData.append("quantity", String(quoteOptions.quantity));
+
+                const response = await authFetch('/api/quote', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.detail || data.error || '请求失败，请稍后重试');
+                }
+                mergeResultsByFilename(data.results || []);
+                renderResultsTable();
+                recalcSummaryFromCurrentResults();
+            }
+
+            function renderResultsTable() {
+                const tbody = document.getElementById('batch-results-body');
+                tbody.innerHTML = '';
+                if (!currentResults.length) {
+                    tbody.innerHTML = `
+                        <tr class="border-t border-gray-100">
+                            <td class="px-2 py-2 text-gray-500" colspan="12">暂无数据，请在表格底部上传并自动报价</td>
+                        </tr>
+                    `;
+                    return;
+                }
+                currentResults.forEach((item) => {
+                    const tr = document.createElement('tr');
+                    tr.className = 'border-t border-gray-100';
+                    tr.setAttribute('data-row-file', item.filename);
+                    const ext = item.filename && item.filename.includes('.')
+                        ? item.filename.split('.').pop().toLowerCase()
+                        : '-';
+                    if (item.status === 'success') {
+                        const geometryText = `
+                            <div class="whitespace-nowrap">体积: ${item.volume_cm3} cm³</div>
+                            <div class="whitespace-nowrap">表面积: ${item.surface_area_cm2} cm²</div>
+                            <div class="whitespace-nowrap">尺寸: ${item.dimensions}</div>
+                        `;
+                        const colorText = formatColorLabel(item.color) || '-';
+                        const thumbnail = thumbnailMap.get(item.filename) || buildPlaceholderThumbnail(ext);
+                        const materialOptionsHtml = MATERIAL_OPTIONS.map((m) => `<option value="${m.name}" ${m.name === item.material ? 'selected' : ''}>${m.name}</option>`).join('');
+                        const renderedRowColors = renderColorOptionsForMaterial(item.material, item.color);
+                        const colorOptionsHtml = renderedRowColors.html;
+                        tr.innerHTML = `
+                            <td class="px-2 py-1.5">${item.filename}</td>
+                            <td class="px-2 py-1.5">
+                                <button type="button" data-preview-file="${item.filename}" data-preview-ext="${ext}" class="block rounded border border-gray-200 overflow-hidden hover:border-indigo-300 transition-colors">
+                                    <img src="${thumbnail}" alt="静态图" class="w-32 h-20 object-cover bg-white" />
+                                </button>
+                            </td>
+                            <td class="px-2 py-1.5"><select data-field="material" class="row-edit text-[11px] border border-gray-300 rounded px-1 py-0.5">${materialOptionsHtml}</select></td>
+                            <td class="px-2 py-1.5"><select data-field="color" class="row-edit text-[11px] border border-gray-300 rounded px-1 py-0.5">${colorOptionsHtml}</select></td>
+                            <td class="px-2 py-1.5"><input data-field="quantity" type="number" min="1" value="${item.quantity}" class="row-edit w-14 text-[11px] border border-gray-300 rounded px-1 py-0.5" /></td>
+                            <td class="px-2 py-1.5 text-[10px] leading-tight">${geometryText}</td>
+                            <td class="px-2 py-1.5">${item.weight_g}</td>
+                            <td class="px-2 py-1.5">${item.estimated_time_h}</td>
+                            <td class="px-2 py-1.5">¥ ${item.unit_cost_cny}</td>
+                            <td class="px-2 py-1.5">¥ ${item.cost_cny}</td>
+                            <td data-role="status-cell" class="px-2 py-1.5 text-green-600">成功</td>
+                            <td class="px-2 py-1.5">
+                                <button type="button" data-delete-file="${item.filename}" class="text-[11px] text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 rounded px-2 py-0.5">删除</button>
+                            </td>
+                        `;
+                    } else {
+                        const thumbnail = thumbnailMap.get(item.filename) || buildPlaceholderThumbnail(ext);
+                        const selectedMaterial = item.material || quoteOptions.material;
+                        const selectedColor = item.color || quoteOptions.color;
+                        const materialOptionsHtml = MATERIAL_OPTIONS.map((m) => `<option value="${m.name}" ${m.name === selectedMaterial ? 'selected' : ''}>${m.name}</option>`).join('');
+                        const renderedRowColors = renderColorOptionsForMaterial(selectedMaterial, selectedColor);
+                        const colorOptionsHtml = renderedRowColors.html;
+                        const quantityValue = item.quantity || quoteOptions.quantity || 1;
+                        tr.innerHTML = `
+                            <td class="px-2 py-1.5">${item.filename}</td>
+                            <td class="px-2 py-1.5">
+                                <button type="button" data-preview-file="${item.filename}" data-preview-ext="${ext}" class="block rounded border border-gray-200 overflow-hidden hover:border-indigo-300 transition-colors">
+                                    <img src="${thumbnail}" alt="静态图" class="w-32 h-20 object-cover bg-white" />
+                                </button>
+                            </td>
+                            <td class="px-2 py-1.5"><select data-field="material" class="row-edit text-[11px] border border-gray-300 rounded px-1 py-0.5">${materialOptionsHtml}</select></td>
+                            <td class="px-2 py-1.5"><select data-field="color" class="row-edit text-[11px] border border-gray-300 rounded px-1 py-0.5">${colorOptionsHtml}</select></td>
+                            <td class="px-2 py-1.5"><input data-field="quantity" type="number" min="1" value="${quantityValue}" class="row-edit w-14 text-[11px] border border-gray-300 rounded px-1 py-0.5" /></td>
+                            <td class="px-2 py-1.5">-</td>
+                            <td class="px-2 py-1.5">-</td>
+                            <td class="px-2 py-1.5">-</td>
+                            <td class="px-2 py-1.5">-</td>
+                            <td class="px-2 py-1.5">-</td>
+                            <td data-role="status-cell" class="px-2 py-1.5 text-red-600">${item.error || '失败'}</td>
+                            <td class="px-2 py-1.5">
+                                <button type="button" data-delete-file="${item.filename}" class="text-[11px] text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 rounded px-2 py-0.5">删除</button>
+                            </td>
+                        `;
+                    }
+                    tbody.appendChild(tr);
+                });
+            }
+
+            // 监听文件选择并显示文件名
+            fileInput.addEventListener('change', async (e) => {
+                const newFiles = Array.from(e.target.files || []);
+                fileInput.value = '';
+                if (newFiles.length === 0) return;
+
+                const combined = new Map(selectedFilesMap);
+                newFiles.forEach((file) => combined.set(file.name, file));
+
+                if (combined.size > MAX_FILES) {
+                    errorMsg.textContent = `最多支持 ${MAX_FILES} 个文件（当前已选择 ${selectedFilesMap.size} 个，本次新增 ${newFiles.length} 个）`;
+                    errorContainer.classList.remove('hidden');
+                    return;
+                }
+
+                const invalidByType = newFiles.find((f) => {
+                    const name = f.name.toLowerCase();
+                    return !ALLOWED_EXTENSIONS.some((ext) => name.endsWith(ext));
+                });
+                if (invalidByType) {
+                    errorMsg.textContent = `不支持的格式：${invalidByType.name}。仅支持 ${ALLOWED_EXTENSIONS.join('/')}`;
+                    errorContainer.classList.remove('hidden');
+                    return;
+                }
+
+                const invalidBySize = newFiles.find((f) => f.size >= MAX_FILE_SIZE);
+                if (invalidBySize) {
+                    errorMsg.textContent = `文件过大：${invalidBySize.name}，单文件必须小于100MB`;
+                    errorContainer.classList.remove('hidden');
+                    return;
+                }
+
+                errorContainer.classList.add('hidden');
+                newFiles.forEach((file) => selectedFilesMap.set(file.name, file));
+                fileNameDisplay.classList.add('text-indigo-600', 'font-medium');
+
+                if (!authToken) {
+                    pendingQuoteFiles = newFiles;
+                    fileNameDisplay.textContent = `当前列表共 ${selectedFilesMap.size} 个文件，请登录后继续为新增 ${newFiles.length} 个文件自动报价`;
+                    errorMsg.textContent = '请先登录后再上传报价';
+                    errorContainer.classList.remove('hidden');
+                    openLoginModal();
+                    return;
+                }
+                fileNameDisplay.textContent = `当前列表共 ${selectedFilesMap.size} 个文件，正在为新增 ${newFiles.length} 个文件生成静态图与自动报价...`;
+
+                try {
+                    await buildThumbnails(newFiles);
+                    await quoteSelectedFiles(newFiles);
+                    fileNameDisplay.textContent = `当前列表共 ${selectedFilesMap.size} 个文件，新增 ${newFiles.length} 个文件报价完成`;
+                } catch (err) {
+                    errorMsg.textContent = err.message;
+                    errorContainer.classList.remove('hidden');
+                    fileNameDisplay.textContent = `当前列表共 ${selectedFilesMap.size} 个文件，新增 ${newFiles.length} 个文件自动报价失败`;
+                }
+            });
+
+            // 预览区域自适应
+            window.addEventListener('resize', () => {
+                const width = previewContainer.clientWidth;
+                const height = previewContainer.clientHeight;
+                camera.aspect = width / height;
+                camera.updateProjectionMatrix();
+                renderer.setSize(width, height);
+            });
+
+            async function initializeAuth() {
+                loadUserSession();
+                if (!authToken) {
+                    renderAuthUI();
+                    updateDropdowns();
+                    return;
+                }
+                try {
+                    const response = await authFetch('/api/auth/me');
+                    if (!response.ok) {
+                        throw new Error('会话已失效');
+                    }
+                    const user = await response.json();
+                    currentUser = user;
+                    saveUserSession();
+                    await fetchUserSettings();
+                } catch (e) {
+                    currentUser = null;
+                    authToken = "";
+                    clearUserSession();
+                    updateDropdowns();
+                }
+                renderAuthUI();
+            }
+
+            initializeAuth();
+            refreshOptionsSummary();
+
+            // 上传后自动报价，不再需要手动提交
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+python-multipart
+numpy
+numpy-stl
+trimesh
+python-jose
+bcrypt
