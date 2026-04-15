@@ -26,7 +26,8 @@
                     <button id="open-login-btn" type="button" class="text-sm px-3 py-1.5 border border-indigo-200 text-indigo-700 rounded-md hover:bg-indigo-50">登录</button>
                     <div id="user-menu" class="hidden relative">
                         <button id="user-menu-btn" type="button" class="text-sm px-3 py-1.5 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"></button>
-                        <div id="user-dropdown" class="hidden absolute right-0 mt-2 w-32 rounded-md border border-gray-200 bg-white shadow-lg z-20">
+                        <div id="user-dropdown" class="hidden absolute right-0 mt-2 w-40 rounded-md border border-gray-200 bg-white shadow-lg z-20">
+                            <button id="open-admin-users-btn" type="button" class="hidden w-full text-left text-xs px-3 py-2 hover:bg-gray-50">用户管理</button>
                             <button id="open-user-center-btn" type="button" class="w-full text-left text-xs px-3 py-2 hover:bg-gray-50">用户中心</button>
                             <button id="logout-btn" type="button" class="w-full text-left text-xs px-3 py-2 text-red-600 hover:bg-red-50">退出登录</button>
                         </div>
@@ -127,12 +128,22 @@
                         </div>
                         <div class="p-4 space-y-3">
                             <div>
-                                <label class="block text-sm font-medium text-gray-700">用户名</label>
-                                <input id="login-username" type="text" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" placeholder="请输入用户名" />
+                                <label class="block text-sm font-medium text-gray-700">账号</label>
+                                <input id="login-username" type="text" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" placeholder="用户名 / 邮箱 / 手机号" />
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700">密码</label>
                                 <input id="login-password" type="password" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" placeholder="请输入密码" />
+                            </div>
+                            <div class="grid grid-cols-[1fr,auto] gap-2 items-end">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">验证码</label>
+                                    <input id="login-captcha-code" type="text" maxlength="8" autocomplete="off" autocapitalize="characters" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" placeholder="请输入 4 位验证码" />
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <img id="login-captcha-img" alt="验证码" class="h-11 w-36 border border-gray-200 rounded-md bg-white object-contain" />
+                                    <button id="login-captcha-refresh-btn" type="button" class="h-11 px-3 rounded-md border border-indigo-200 text-indigo-700 text-xs hover:bg-indigo-50">刷新</button>
+                                </div>
                             </div>
                             <p id="login-error" class="hidden text-xs text-red-600"></p>
                             <div class="grid grid-cols-2 gap-2">
@@ -348,6 +359,7 @@
             const userMenu = document.getElementById('user-menu');
             const userMenuBtn = document.getElementById('user-menu-btn');
             const userDropdown = document.getElementById('user-dropdown');
+            const openAdminUsersBtn = document.getElementById('open-admin-users-btn');
             const openUserCenterBtn = document.getElementById('open-user-center-btn');
             const logoutBtn = document.getElementById('logout-btn');
             const loginModal = document.getElementById('login-modal');
@@ -355,6 +367,9 @@
             const loginCloseBtn = document.getElementById('login-close-btn');
             const loginUsername = document.getElementById('login-username');
             const loginPassword = document.getElementById('login-password');
+            const loginCaptchaImg = document.getElementById('login-captcha-img');
+            const loginCaptchaCode = document.getElementById('login-captcha-code');
+            const loginCaptchaRefreshBtn = document.getElementById('login-captcha-refresh-btn');
             const loginSubmitBtn = document.getElementById('login-submit-btn');
             const registerSubmitBtn = document.getElementById('register-submit-btn');
             const loginError = document.getElementById('login-error');
@@ -454,12 +469,43 @@
             const USER_STORAGE_KEY = "demo_user_v1";
             let currentUser = null;
             let authToken = "";
+            let currentCaptchaId = "";
+            let currentCaptchaUrl = "";
+
+            async function refreshLoginCaptcha() {
+                try {
+                    const res = await fetch('/api/auth/captcha', { method: 'GET' });
+                    const data = await res.json();
+                    if (!res.ok) {
+                        throw new Error(data.detail || '验证码获取失败');
+                    }
+                    currentCaptchaId = data.captcha_id || "";
+                    currentCaptchaUrl = data.image_url || "";
+                    const fallbackDataUrl = data.image_data_url || "";
+                    if (currentCaptchaUrl) {
+                        loginCaptchaImg.src = `${currentCaptchaUrl}?t=${Date.now()}`;
+                    } else if (fallbackDataUrl) {
+                        loginCaptchaImg.src = fallbackDataUrl;
+                    } else {
+                        loginCaptchaImg.removeAttribute('src');
+                    }
+                    loginCaptchaCode.value = "";
+                } catch (e) {
+                    currentCaptchaId = "";
+                    currentCaptchaUrl = "";
+                    loginCaptchaImg.removeAttribute('src');
+                    loginError.textContent = '验证码加载失败，请点击“刷新验证码”或检查后端服务是否已重启';
+                    loginError.classList.remove('hidden');
+                }
+            }
 
             function openLoginModal() {
                 loginError.classList.add('hidden');
                 loginError.textContent = '';
                 loginPassword.value = '';
+                loginCaptchaCode.value = '';
                 loginModal.classList.remove('hidden');
+                refreshLoginCaptcha();
             }
 
             function closeLoginModal() {
@@ -471,10 +517,16 @@
                     openLoginBtn.classList.add('hidden');
                     userMenu.classList.remove('hidden');
                     userMenuBtn.textContent = `${currentUser.username}`;
+                    if (currentUser.is_admin) {
+                        openAdminUsersBtn.classList.remove('hidden');
+                    } else {
+                        openAdminUsersBtn.classList.add('hidden');
+                    }
                 } else {
                     openLoginBtn.classList.remove('hidden');
                     userMenu.classList.add('hidden');
                     userDropdown.classList.add('hidden');
+                    openAdminUsersBtn.classList.add('hidden');
                 }
             }
 
@@ -914,6 +966,12 @@
                 if (!authToken || !currentUser) {
                     throw new Error('登录响应无效，请重试');
                 }
+                try {
+                    const meResp = await authFetch('/api/auth/me');
+                    if (meResp.ok) {
+                        currentUser = await meResp.json();
+                    }
+                } catch (e) {}
                 saveUserSession();
                 renderAuthUI();
                 await fetchUserSettings();
@@ -939,17 +997,30 @@
             openLoginBtn.addEventListener('click', openLoginModal);
             loginCloseBtn.addEventListener('click', closeLoginModal);
             loginBackdrop.addEventListener('click', closeLoginModal);
+            loginCaptchaRefreshBtn.addEventListener('click', refreshLoginCaptcha);
             loginSubmitBtn.addEventListener('click', async () => {
-                const username = (loginUsername.value || '').trim();
+                const identifier = (loginUsername.value || '').trim();
                 const password = loginPassword.value || '';
-                if (!username) {
-                    loginError.textContent = '请输入用户名';
+                const captchaCode = (loginCaptchaCode.value || '').trim();
+                if (!identifier) {
+                    loginError.textContent = '请输入账号';
                     loginError.classList.remove('hidden');
                     return;
                 }
-                if (password.length < 6) {
-                    loginError.textContent = '密码长度至少 6 位';
+                if (!(password.length >= 6 && /[A-Za-z]/.test(password) && /\d/.test(password))) {
+                    loginError.textContent = '密码至少 6 位且必须包含字母和数字';
                     loginError.classList.remove('hidden');
+                    return;
+                }
+                if (!captchaCode) {
+                    loginError.textContent = '请输入验证码';
+                    loginError.classList.remove('hidden');
+                    return;
+                }
+                if (!currentCaptchaId) {
+                    loginError.textContent = '验证码已失效，请刷新后重试';
+                    loginError.classList.remove('hidden');
+                    await refreshLoginCaptcha();
                     return;
                 }
                 loginError.classList.add('hidden');
@@ -957,7 +1028,7 @@
                     const response = await fetch('/api/auth/login', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ username, password })
+                        body: JSON.stringify({ identifier, password, captcha_id: currentCaptchaId, captcha_code: captchaCode })
                     });
                     const data = await response.json();
                     if (!response.ok) {
@@ -967,40 +1038,18 @@
                 } catch (err) {
                     loginError.textContent = err.message || '登录失败';
                     loginError.classList.remove('hidden');
+                    await refreshLoginCaptcha();
                 }
             });
-            registerSubmitBtn.addEventListener('click', async () => {
-                const username = (loginUsername.value || '').trim();
-                const password = loginPassword.value || '';
-                if (!username) {
-                    loginError.textContent = '请输入用户名';
-                    loginError.classList.remove('hidden');
-                    return;
-                }
-                if (password.length < 6) {
-                    loginError.textContent = '密码长度至少 6 位';
-                    loginError.classList.remove('hidden');
-                    return;
-                }
-                loginError.classList.add('hidden');
-                try {
-                    const response = await fetch('/api/auth/register', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ username, password })
-                    });
-                    const data = await response.json();
-                    if (!response.ok) {
-                        throw new Error(data.detail || '注册失败');
-                    }
-                    await handleAuthSuccess(data);
-                } catch (err) {
-                    loginError.textContent = err.message || '注册失败';
-                    loginError.classList.remove('hidden');
-                }
+            registerSubmitBtn.addEventListener('click', () => {
+                window.location.href = '/register';
             });
             userMenuBtn.addEventListener('click', () => {
                 userDropdown.classList.toggle('hidden');
+            });
+            openAdminUsersBtn.addEventListener('click', () => {
+                userDropdown.classList.add('hidden');
+                window.location.href = '/admin/users';
             });
             openUserCenterBtn.addEventListener('click', () => {
                 userDropdown.classList.add('hidden');

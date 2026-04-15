@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>用户管理 - 3D打印自动报价系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen p-4 lg:p-6">
+    <div class="max-w-6xl mx-auto bg-white rounded-xl shadow-md overflow-hidden">
+        <div class="p-8 space-y-5">
+            <div class="flex items-start justify-between gap-4">
+                <div>
+                    <div class="uppercase tracking-wide text-sm text-indigo-500 font-semibold mb-1">3D Printing Parts Automated Quoting System</div>
+                    <h2 class="text-2xl font-bold text-gray-900">用户管理</h2>
+                </div>
+                <a href="/" class="text-sm px-3 py-1.5 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">返回首页</a>
+            </div>
+
+            <div class="flex flex-wrap gap-2">
+                <button data-tab="users" type="button" class="tab-btn px-3 py-1.5 rounded-md bg-indigo-600 text-white text-sm">用户</button>
+                <button data-tab="audit" type="button" class="tab-btn px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 text-sm hover:bg-gray-50">审计日志</button>
+                <button data-tab="metrics" type="button" class="tab-btn px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 text-sm hover:bg-gray-50">监控</button>
+            </div>
+
+            <p id="msg" class="hidden text-xs"></p>
+
+            <div id="tab-users" class="space-y-3">
+                <div class="grid grid-cols-[1fr,auto] gap-2">
+                    <input id="search-input" type="text" class="block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" placeholder="按用户名/邮箱/手机号搜索" />
+                    <button id="search-btn" type="button" class="px-4 py-2 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700">搜索</button>
+                </div>
+                <div class="overflow-x-auto border border-gray-200 rounded-md">
+                    <table class="min-w-full text-xs text-left">
+                        <thead class="bg-gray-50 text-gray-600">
+                            <tr>
+                                <th class="px-3 py-2">ID</th>
+                                <th class="px-3 py-2">用户名</th>
+                                <th class="px-3 py-2">邮箱(脱敏)</th>
+                                <th class="px-3 py-2">手机(脱敏)</th>
+                                <th class="px-3 py-2">类型</th>
+                                <th class="px-3 py-2">邮箱验证</th>
+                                <th class="px-3 py-2">手机验证</th>
+                                <th class="px-3 py-2">注册时间</th>
+                                <th class="px-3 py-2">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="users-tbody" class="bg-white divide-y divide-gray-100">
+                            <tr><td colspan="9" class="px-3 py-4 text-gray-500">加载中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="tab-audit" class="space-y-3 hidden">
+                <div class="grid grid-cols-1 lg:grid-cols-[1fr,1fr,1fr,auto] gap-2">
+                    <input id="audit-q" type="text" class="block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" placeholder="全文搜索：action/用户名/IP/path/request_id" />
+                    <input id="audit-action" type="text" class="block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" placeholder="action 过滤（可选）" />
+                    <input id="audit-username" type="text" class="block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" placeholder="用户名过滤（可选）" />
+                    <button id="audit-search-btn" type="button" class="px-4 py-2 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700">查询</button>
+                </div>
+                <div class="overflow-x-auto border border-gray-200 rounded-md">
+                    <table class="min-w-full text-xs text-left">
+                        <thead class="bg-gray-50 text-gray-600">
+                            <tr>
+                                <th class="px-3 py-2">时间</th>
+                                <th class="px-3 py-2">action</th>
+                                <th class="px-3 py-2">用户</th>
+                                <th class="px-3 py-2">IP</th>
+                                <th class="px-3 py-2">请求</th>
+                                <th class="px-3 py-2">request_id</th>
+                                <th class="px-3 py-2">detail</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-tbody" class="bg-white divide-y divide-gray-100">
+                            <tr><td colspan="7" class="px-3 py-4 text-gray-500">加载中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="tab-metrics" class="space-y-3 hidden">
+                <div class="flex flex-wrap gap-2 items-center">
+                    <button id="metrics-refresh-btn" type="button" class="px-4 py-2 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700">刷新</button>
+                    <button id="cleanup-btn" type="button" class="px-4 py-2 rounded-md border border-gray-300 text-gray-700 text-sm hover:bg-gray-50">清理过期数据</button>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div class="border border-gray-200 rounded-md p-3 bg-gray-50">
+                        <div class="text-xs text-gray-500">运行时长</div>
+                        <div id="m-uptime" class="text-lg font-semibold text-gray-900">-</div>
+                    </div>
+                    <div class="border border-gray-200 rounded-md p-3 bg-gray-50">
+                        <div class="text-xs text-gray-500">请求数(Tracked)</div>
+                        <div id="m-req" class="text-lg font-semibold text-gray-900">-</div>
+                    </div>
+                    <div class="border border-gray-200 rounded-md p-3 bg-gray-50">
+                        <div class="text-xs text-gray-500">平均耗时(ms)</div>
+                        <div id="m-avg" class="text-lg font-semibold text-gray-900">-</div>
+                    </div>
+                    <div class="border border-gray-200 rounded-md p-3 bg-gray-50">
+                        <div class="text-xs text-gray-500">P95 耗时(ms)</div>
+                        <div id="m-p95" class="text-lg font-semibold text-gray-900">-</div>
+                    </div>
+                </div>
+                <div class="overflow-x-auto border border-gray-200 rounded-md">
+                    <table class="min-w-full text-xs text-left">
+                        <thead class="bg-gray-50 text-gray-600">
+                            <tr>
+                                <th class="px-3 py-2">Path</th>
+                                <th class="px-3 py-2">Count</th>
+                                <th class="px-3 py-2">5xx</th>
+                                <th class="px-3 py-2">Avg(ms)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="metrics-tbody" class="bg-white divide-y divide-gray-100">
+                            <tr><td colspan="4" class="px-3 py-4 text-gray-500">加载中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        const TOKEN_STORAGE_KEY = "demo_access_token_v1";
+        const usersTbody = document.getElementById('users-tbody');
+        const auditTbody = document.getElementById('audit-tbody');
+        const metricsTbody = document.getElementById('metrics-tbody');
+        const msg = document.getElementById('msg');
+        const searchInput = document.getElementById('search-input');
+        const searchBtn = document.getElementById('search-btn');
+        const auditQ = document.getElementById('audit-q');
+        const auditAction = document.getElementById('audit-action');
+        const auditUsername = document.getElementById('audit-username');
+        const auditSearchBtn = document.getElementById('audit-search-btn');
+        const metricsRefreshBtn = document.getElementById('metrics-refresh-btn');
+        const cleanupBtn = document.getElementById('cleanup-btn');
+        const uptimeEl = document.getElementById('m-uptime');
+        const reqEl = document.getElementById('m-req');
+        const avgEl = document.getElementById('m-avg');
+        const p95El = document.getElementById('m-p95');
+        let authToken = localStorage.getItem(TOKEN_STORAGE_KEY) || "";
+        let isAdmin = false;
+        const tabUsers = document.getElementById('tab-users');
+        const tabAudit = document.getElementById('tab-audit');
+        const tabMetrics = document.getElementById('tab-metrics');
+
+        function showMsg(text, ok = false) {
+            msg.textContent = text;
+            msg.className = ok ? "text-xs text-green-600" : "text-xs text-red-600";
+            msg.classList.remove('hidden');
+        }
+
+        function clearMsg() {
+            msg.classList.add('hidden');
+            msg.textContent = '';
+        }
+
+        async function authFetch(url, options = {}) {
+            const headers = new Headers(options.headers || {});
+            if (authToken) headers.set("Authorization", `Bearer ${authToken}`);
+            return fetch(url, { ...options, headers });
+        }
+
+        async function ensureAdmin() {
+            const meResp = await authFetch('/api/auth/me');
+            if (!meResp.ok) return false;
+            const me = await meResp.json();
+            isAdmin = !!me.is_admin;
+            return isAdmin;
+        }
+
+        async function updateMembership(userId, membershipLevel) {
+            clearMsg();
+            try {
+                if (!isAdmin && !(await ensureAdmin())) {
+                    showMsg('当前账号不是管理员', false);
+                    return;
+                }
+                const resp = await authFetch(`/api/admin/users/${encodeURIComponent(userId)}/membership`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ membership_level: membershipLevel }),
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.detail || '设置失败');
+                showMsg(`已更新：用户 ${userId} -> ${membershipLevel}`, true);
+                await loadUsers();
+            } catch (e) {
+                showMsg(e.message || '设置失败', false);
+            }
+        }
+
+        function renderRows(items) {
+            if (!items || !items.length) {
+                usersTbody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-gray-500">没有匹配用户</td></tr>';
+                return;
+            }
+            usersTbody.innerHTML = items.map((u) => `
+                <tr>
+                    <td class="px-3 py-2">${u.id}</td>
+                    <td class="px-3 py-2">${u.username || '-'}</td>
+                    <td class="px-3 py-2">${u.email_masked || '-'}</td>
+                    <td class="px-3 py-2">${u.phone_masked || '-'}</td>
+                    <td class="px-3 py-2">${(u.membership_level || 'free') === 'member' ? '会员' : '普通'}</td>
+                    <td class="px-3 py-2">${u.email_verified ? '是' : '否'}</td>
+                    <td class="px-3 py-2">${u.phone_verified ? '是' : '否'}</td>
+                    <td class="px-3 py-2">${u.created_at || '-'}</td>
+                    <td class="px-3 py-2 whitespace-nowrap">
+                        ${(u.membership_level || 'free') === 'member'
+                            ? `<button type="button" data-member-action="free" data-user-id="${u.id}" class="px-2 py-1 rounded border border-gray-300 text-gray-700 hover:bg-gray-50">设为普通</button>`
+                            : `<button type="button" data-member-action="member" data-user-id="${u.id}" class="px-2 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700">设为会员</button>`
+                        }
+                    </td>
+                </tr>
+            `).join('');
+            usersTbody.querySelectorAll('[data-member-action][data-user-id]').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const userId = btn.getAttribute('data-user-id');
+                    const level = btn.getAttribute('data-member-action');
+                    updateMembership(userId, level);
+                });
+            });
+        }
+
+        async function loadUsers() {
+            clearMsg();
+            usersTbody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-gray-500">加载中...</td></tr>';
+            const q = (searchInput.value || '').trim();
+            const url = `/api/admin/users?limit=100&offset=0&q=${encodeURIComponent(q)}`;
+            try {
+                if (!isAdmin && !(await ensureAdmin())) {
+                    showMsg('当前账号不是管理员', false);
+                    usersTbody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-gray-500">无权限访问</td></tr>';
+                    return;
+                }
+
+                const resp = await authFetch(url);
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.detail || '加载失败');
+                renderRows(data.items || []);
+                showMsg(`共 ${data.total || 0} 个用户`, true);
+            } catch (e) {
+                showMsg(e.message || '加载失败', false);
+                usersTbody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-gray-500">加载失败</td></tr>';
+            }
+        }
+
+        function renderAuditRows(items) {
+            if (!items || !items.length) {
+                auditTbody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-gray-500">没有匹配记录</td></tr>';
+                return;
+            }
+            auditTbody.innerHTML = items.map((e) => {
+                const req = [e.method, e.path].filter(Boolean).join(' ');
+                const detail = e.detail ? JSON.stringify(e.detail) : '';
+                return `
+                    <tr>
+                        <td class="px-3 py-2 whitespace-nowrap">${e.created_at || '-'}</td>
+                        <td class="px-3 py-2">${e.action || '-'}</td>
+                        <td class="px-3 py-2">${e.username || '-'}</td>
+                        <td class="px-3 py-2">${e.ip || '-'}</td>
+                        <td class="px-3 py-2">${req || '-'}</td>
+                        <td class="px-3 py-2">${e.request_id || '-'}</td>
+                        <td class="px-3 py-2 break-all max-w-[520px]">${detail || '-'}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        async function loadAudit() {
+            clearMsg();
+            auditTbody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-gray-500">加载中...</td></tr>';
+            try {
+                if (!isAdmin && !(await ensureAdmin())) {
+                    showMsg('当前账号不是管理员', false);
+                    auditTbody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-gray-500">无权限访问</td></tr>';
+                    return;
+                }
+                const q = (auditQ.value || '').trim();
+                const action = (auditAction.value || '').trim();
+                const username = (auditUsername.value || '').trim();
+                const url = `/api/admin/audit?limit=120&offset=0&q=${encodeURIComponent(q)}&action=${encodeURIComponent(action)}&username=${encodeURIComponent(username)}`;
+                const resp = await authFetch(url);
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.detail || '加载失败');
+                renderAuditRows(data.items || []);
+                showMsg(`共 ${data.total || 0} 条记录`, true);
+            } catch (e) {
+                showMsg(e.message || '加载失败', false);
+                auditTbody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-gray-500">加载失败</td></tr>';
+            }
+        }
+
+        function renderMetricsRows(items) {
+            if (!items || !items.length) {
+                metricsTbody.innerHTML = '<tr><td colspan="4" class="px-3 py-4 text-gray-500">暂无数据</td></tr>';
+                return;
+            }
+            metricsTbody.innerHTML = items.map((x) => `
+                <tr>
+                    <td class="px-3 py-2">${x.path}</td>
+                    <td class="px-3 py-2">${x.count}</td>
+                    <td class="px-3 py-2">${x.errors_5xx}</td>
+                    <td class="px-3 py-2">${x.avg_latency_ms}</td>
+                </tr>
+            `).join('');
+        }
+
+        async function loadMetrics() {
+            clearMsg();
+            metricsTbody.innerHTML = '<tr><td colspan="4" class="px-3 py-4 text-gray-500">加载中...</td></tr>';
+            try {
+                if (!isAdmin && !(await ensureAdmin())) {
+                    showMsg('当前账号不是管理员', false);
+                    metricsTbody.innerHTML = '<tr><td colspan="4" class="px-3 py-4 text-gray-500">无权限访问</td></tr>';
+                    return;
+                }
+                const resp = await authFetch('/api/admin/metrics');
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.detail || '加载失败');
+                uptimeEl.textContent = `${Math.round(data.uptime_seconds || 0)}s`;
+                reqEl.textContent = `${data.events_tracked || 0}`;
+                avgEl.textContent = `${data.avg_latency_ms || 0}`;
+                p95El.textContent = `${data.p95_latency_ms || 0}`;
+                renderMetricsRows(data.top_paths || []);
+                showMsg(`2xx ${data.counts?.["2xx"] || 0} / 4xx ${data.counts?.["4xx"] || 0} / 5xx ${data.counts?.["5xx"] || 0}`, true);
+            } catch (e) {
+                showMsg(e.message || '加载失败', false);
+                metricsTbody.innerHTML = '<tr><td colspan="4" class="px-3 py-4 text-gray-500">加载失败</td></tr>';
+            }
+        }
+
+        async function runCleanup() {
+            clearMsg();
+            try {
+                if (!isAdmin && !(await ensureAdmin())) {
+                    showMsg('当前账号不是管理员', false);
+                    return;
+                }
+                const resp = await authFetch('/api/admin/maintenance/cleanup', { method: 'POST' });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.detail || '执行失败');
+                showMsg(`清理完成：${JSON.stringify(data.deleted || {})}`, true);
+                await loadMetrics();
+            } catch (e) {
+                showMsg(e.message || '执行失败', false);
+            }
+        }
+
+        function setActiveTab(name) {
+            tabUsers.classList.toggle('hidden', name !== 'users');
+            tabAudit.classList.toggle('hidden', name !== 'audit');
+            tabMetrics.classList.toggle('hidden', name !== 'metrics');
+            document.querySelectorAll('.tab-btn').forEach((btn) => {
+                const active = (btn.getAttribute('data-tab') === name);
+                btn.className = active
+                    ? 'tab-btn px-3 py-1.5 rounded-md bg-indigo-600 text-white text-sm'
+                    : 'tab-btn px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 text-sm hover:bg-gray-50';
+            });
+            if (name === 'users') loadUsers();
+            if (name === 'audit') loadAudit();
+            if (name === 'metrics') loadMetrics();
+        }
+
+        searchBtn.addEventListener('click', loadUsers);
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') loadUsers();
+        });
+        auditSearchBtn.addEventListener('click', loadAudit);
+        [auditQ, auditAction, auditUsername].forEach((el) => el.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') loadAudit();
+        }));
+        metricsRefreshBtn.addEventListener('click', loadMetrics);
+        cleanupBtn.addEventListener('click', runCleanup);
+        document.querySelectorAll('.tab-btn').forEach((btn) => btn.addEventListener('click', () => {
+            const tab = btn.getAttribute('data-tab');
+            location.hash = `#${tab}`;
+            setActiveTab(tab);
+        }));
+
+        const initialTab = (location.hash || '#users').replace('#', '') || 'users';
+        setActiveTab(['users', 'audit', 'metrics'].includes(initialTab) ? initialTab : 'users');
+    </script>
+</body>
+</html>

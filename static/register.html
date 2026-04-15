@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>注册 - 3D打印自动报价系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen p-4 lg:p-6">
+    <div class="max-w-lg mx-auto bg-white rounded-xl shadow-md overflow-hidden">
+        <div class="p-8 space-y-6">
+            <div class="flex items-start justify-between gap-4">
+                <div>
+                    <div class="uppercase tracking-wide text-sm text-indigo-500 font-semibold mb-1">3D Printing Parts Automated Quoting System</div>
+                    <h2 class="text-2xl font-bold text-gray-900">用户注册</h2>
+                </div>
+                <a href="/" class="text-sm px-3 py-1.5 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">返回登录</a>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">用户名</label>
+                    <input id="reg-username" type="text" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" placeholder="字母/数字/._-，3-50位" />
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">邮箱</label>
+                    <div class="grid grid-cols-[1fr,auto] gap-2">
+                        <input id="reg-email" type="email" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" placeholder="name@example.com" />
+                        <button id="send-email-code-btn" type="button" class="mt-1 px-3 py-2 rounded-md border border-indigo-200 text-indigo-700 text-xs hover:bg-indigo-50">发送验证码</button>
+                    </div>
+                    <input id="reg-email-code" type="text" class="mt-2 block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" placeholder="邮箱验证码（6位）" />
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">手机号</label>
+                    <div class="grid grid-cols-[1fr,auto] gap-2">
+                        <input id="reg-phone" type="tel" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" placeholder="+86..." />
+                        <button id="send-phone-code-btn" type="button" class="mt-1 px-3 py-2 rounded-md border border-indigo-200 text-indigo-700 text-xs hover:bg-indigo-50">发送验证码</button>
+                    </div>
+                    <input id="reg-phone-code" type="text" class="mt-2 block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" placeholder="短信验证码（6位）" />
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">密码</label>
+                    <input id="reg-password" type="password" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" placeholder="至少6位，字母+数字" />
+                </div>
+
+                <div class="grid grid-cols-[1fr,auto] gap-2 items-end">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">图形验证码</label>
+                        <input id="reg-captcha-code" type="text" maxlength="8" autocomplete="off" autocapitalize="characters" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" placeholder="请输入 4 位验证码" />
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <img id="reg-captcha-img" alt="验证码" class="h-11 w-36 border border-gray-200 rounded-md bg-white object-contain" />
+                        <button id="reg-captcha-refresh-btn" type="button" class="h-11 px-3 rounded-md border border-indigo-200 text-indigo-700 text-xs hover:bg-indigo-50">刷新</button>
+                    </div>
+                </div>
+
+                <p id="reg-msg" class="hidden text-xs"></p>
+                <button id="reg-submit-btn" type="button" class="w-full py-2 px-3 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700">注册并登录</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        const TOKEN_STORAGE_KEY = "demo_access_token_v1";
+        const USER_STORAGE_KEY = "demo_user_v1";
+
+        const usernameEl = document.getElementById('reg-username');
+        const emailEl = document.getElementById('reg-email');
+        const phoneEl = document.getElementById('reg-phone');
+        const passwordEl = document.getElementById('reg-password');
+        const emailCodeEl = document.getElementById('reg-email-code');
+        const phoneCodeEl = document.getElementById('reg-phone-code');
+        const captchaImgEl = document.getElementById('reg-captcha-img');
+        const captchaCodeEl = document.getElementById('reg-captcha-code');
+        const refreshCaptchaBtn = document.getElementById('reg-captcha-refresh-btn');
+        const sendEmailBtn = document.getElementById('send-email-code-btn');
+        const sendPhoneBtn = document.getElementById('send-phone-code-btn');
+        const submitBtn = document.getElementById('reg-submit-btn');
+        const msgEl = document.getElementById('reg-msg');
+
+        let captchaId = "";
+        let captchaUrl = "";
+
+        function showMsg(text, type = "error") {
+            msgEl.textContent = text;
+            msgEl.className = type === "ok" ? "text-xs text-green-600" : "text-xs text-red-600";
+            msgEl.classList.remove('hidden');
+        }
+
+        function clearMsg() {
+            msgEl.classList.add('hidden');
+            msgEl.textContent = "";
+        }
+
+        async function refreshCaptcha() {
+            clearMsg();
+            try {
+                const res = await fetch('/api/auth/captcha');
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || '验证码获取失败');
+                captchaId = data.captcha_id || "";
+                captchaUrl = data.image_url || "";
+                if (captchaUrl) captchaImgEl.src = `${captchaUrl}?t=${Date.now()}`;
+                captchaCodeEl.value = "";
+            } catch (e) {
+                captchaId = "";
+                captchaUrl = "";
+                captchaImgEl.removeAttribute('src');
+                showMsg('验证码加载失败，请刷新或检查后端服务', 'error');
+            }
+        }
+
+        function passwordStrongEnough(pw) {
+            return pw.length >= 6 && /[A-Za-z]/.test(pw) && /\d/.test(pw);
+        }
+
+        async function sendVerifyCode(channel, target) {
+            clearMsg();
+            try {
+                const res = await fetch('/api/auth/verify/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ channel, target })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || '发送失败');
+                if (data.dev_code) {
+                    showMsg(`验证码已发送（开发模式）：${data.dev_code}`, 'ok');
+                } else {
+                    showMsg('验证码已发送，请查收', 'ok');
+                }
+            } catch (e) {
+                showMsg(e.message || '发送失败', 'error');
+            }
+        }
+
+        sendEmailBtn.addEventListener('click', () => {
+            const email = (emailEl.value || '').trim();
+            if (!email) {
+                showMsg('请输入邮箱', 'error');
+                return;
+            }
+            sendVerifyCode('email', email);
+        });
+
+        sendPhoneBtn.addEventListener('click', () => {
+            const phone = (phoneEl.value || '').trim();
+            if (!phone) {
+                showMsg('请输入手机号', 'error');
+                return;
+            }
+            sendVerifyCode('phone', phone);
+        });
+
+        refreshCaptchaBtn.addEventListener('click', refreshCaptcha);
+
+        submitBtn.addEventListener('click', async () => {
+            clearMsg();
+            const username = (usernameEl.value || '').trim();
+            const email = (emailEl.value || '').trim();
+            const phone = (phoneEl.value || '').trim();
+            const password = passwordEl.value || '';
+            const emailCode = (emailCodeEl.value || '').trim();
+            const phoneCode = (phoneCodeEl.value || '').trim();
+            const captchaCode = (captchaCodeEl.value || '').trim();
+
+            if (!username) return showMsg('请输入用户名', 'error');
+            if (!email) return showMsg('请输入邮箱', 'error');
+            if (!phone) return showMsg('请输入手机号', 'error');
+            if (!passwordStrongEnough(password)) return showMsg('密码至少6位且必须包含字母和数字', 'error');
+            if (!emailCode) return showMsg('请输入邮箱验证码', 'error');
+            if (!phoneCode) return showMsg('请输入手机验证码', 'error');
+            if (!captchaId || !captchaCode) {
+                await refreshCaptcha();
+                return showMsg('请完成图形验证码', 'error');
+            }
+
+            try {
+                const res = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username,
+                        password,
+                        email,
+                        phone,
+                        email_code: emailCode,
+                        phone_code: phoneCode,
+                        captcha_id: captchaId,
+                        captcha_code: captchaCode
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || '注册失败');
+                localStorage.setItem(TOKEN_STORAGE_KEY, data.access_token || "");
+                localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(data.user || {}));
+                window.location.href = '/';
+            } catch (e) {
+                showMsg(e.message || '注册失败', 'error');
+                await refreshCaptcha();
+            }
+        });
+
+        refreshCaptcha();
+    </script>
+</body>
+</html>

@@ -6,3 +6,4 @@ numpy-stl
 trimesh
 python-jose
 bcrypt
+pillow
