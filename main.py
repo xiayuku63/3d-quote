@@ -11,6 +11,7 @@ import time
 import secrets
 import base64
 import hashlib
+import hmac
 import io
 import uuid
 from collections import defaultdict, deque
@@ -50,6 +51,13 @@ if not JWT_SECRET_KEY:
     if IS_PRODUCTION:
         raise RuntimeError("生产环境必须设置 JWT_SECRET_KEY")
     JWT_SECRET_KEY = "dev-only-insecure-secret-change-me"
+
+PAYMENT_PROVIDER = os.getenv("PAYMENT_PROVIDER", "mock").strip().lower() or "mock"
+PAYMENT_WEBHOOK_SECRET = os.getenv("PAYMENT_WEBHOOK_SECRET", "").strip()
+if not PAYMENT_WEBHOOK_SECRET:
+    if IS_PRODUCTION:
+        raise RuntimeError("生产环境必须设置 PAYMENT_WEBHOOK_SECRET")
+    PAYMENT_WEBHOOK_SECRET = "dev-only-payment-webhook-secret-change-me"
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request, exc):
@@ -613,6 +621,10 @@ def init_db() -> None:
             conn.execute("ALTER TABLE users ADD COLUMN membership_level TEXT")
         except sqlite3.OperationalError:
             pass
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN membership_expires_at TEXT")
+        except sqlite3.OperationalError:
+            pass
 
         conn.execute(
             """
@@ -687,6 +699,55 @@ def init_db() -> None:
             """
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_login_failures_locked_until ON login_failures (locked_until)")
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS membership_plans (
+                code TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                price_cny REAL NOT NULL,
+                currency TEXT NOT NULL,
+                duration_days INTEGER NOT NULL,
+                active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_membership_plans_active ON membership_plans (active)")
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS payment_orders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_no TEXT NOT NULL UNIQUE,
+                user_id INTEGER NOT NULL,
+                plan_code TEXT NOT NULL,
+                amount_cny REAL NOT NULL,
+                currency TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                status TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                paid_at TEXT,
+                provider_txn_id TEXT,
+                raw_json TEXT
+            )
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_payment_orders_user_id ON payment_orders (user_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_payment_orders_status ON payment_orders (status)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_payment_orders_created_at ON payment_orders (created_at)")
+
+        plans_count = conn.execute("SELECT COUNT(*) AS c FROM membership_plans").fetchone()
+        if not plans_count or int(plans_count["c"] or 0) == 0:
+            now_iso = datetime.now(timezone.utc).isoformat()
+            conn.execute(
+                "INSERT OR IGNORE INTO membership_plans (code, name, price_cny, currency, duration_days, active, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)",
+                ("member_month", "会员（月）", 99.0, "CNY", 30, now_iso),
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO membership_plans (code, name, price_cny, currency, duration_days, active, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)",
+                ("member_year", "会员（年）", 999.0, "CNY", 365, now_iso),
+            )
         conn.commit()
 
 
@@ -708,7 +769,7 @@ def create_access_token(user_id: int, username: str) -> str:
 def get_user_by_username(username: str):
     with get_db_conn() as conn:
         row = conn.execute(
-            "SELECT id, username, password_hash, created_at, email, phone, email_verified, phone_verified, membership_level FROM users WHERE username = ?",
+            "SELECT id, username, password_hash, created_at, email, phone, email_verified, phone_verified, membership_level, membership_expires_at FROM users WHERE username = ?",
             (username,),
         ).fetchone()
     return row
@@ -717,7 +778,7 @@ def get_user_by_username(username: str):
 def get_user_by_email(email: str):
     with get_db_conn() as conn:
         row = conn.execute(
-            "SELECT id, username, password_hash, created_at, email, phone, email_verified, phone_verified, membership_level FROM users WHERE email = ?",
+            "SELECT id, username, password_hash, created_at, email, phone, email_verified, phone_verified, membership_level, membership_expires_at FROM users WHERE email = ?",
             (email,),
         ).fetchone()
     return row
@@ -726,7 +787,7 @@ def get_user_by_email(email: str):
 def get_user_by_phone(phone: str):
     with get_db_conn() as conn:
         row = conn.execute(
-            "SELECT id, username, password_hash, created_at, email, phone, email_verified, phone_verified, membership_level FROM users WHERE phone = ?",
+            "SELECT id, username, password_hash, created_at, email, phone, email_verified, phone_verified, membership_level, membership_expires_at FROM users WHERE phone = ?",
             (phone,),
         ).fetchone()
     return row
@@ -746,7 +807,7 @@ def get_user_by_identifier(identifier: str):
 def get_user_by_id(user_id: int):
     with get_db_conn() as conn:
         row = conn.execute(
-            "SELECT id, username, created_at, email, phone, email_verified, phone_verified, membership_level FROM users WHERE id = ?",
+            "SELECT id, username, created_at, email, phone, email_verified, phone_verified, membership_level, membership_expires_at FROM users WHERE id = ?",
             (user_id,),
         ).fetchone()
     return row
@@ -814,11 +875,12 @@ def create_user(username: str, password: str, email: str, phone: str):
     email_verified = 1
     phone_verified = 1
     membership_level = "free"
+    membership_expires_at = None
     try:
         with get_db_conn() as conn:
             conn.execute(
-                "INSERT INTO users (username, password_hash, created_at, materials, colors, pricing_config, email, phone, email_verified, phone_verified, membership_level) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (username, password_hash, created_at, materials_json, colors_json, pricing_json, email, phone, email_verified, phone_verified, membership_level),
+                "INSERT INTO users (username, password_hash, created_at, materials, colors, pricing_config, email, phone, email_verified, phone_verified, membership_level, membership_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (username, password_hash, created_at, materials_json, colors_json, pricing_json, email, phone, email_verified, phone_verified, membership_level, membership_expires_at),
             )
             conn.commit()
     except sqlite3.IntegrityError:
@@ -864,10 +926,28 @@ def is_admin_user(user_row) -> bool:
     return username in ADMIN_USERNAMES
 
 
-def is_member_user(user_row) -> bool:
+def get_membership_effective(user_row) -> tuple[str, Optional[int]]:
     if not user_row:
-        return False
-    level = str(user_row["membership_level"] or "").strip().lower()
+        return "free", None
+    raw_level = str(user_row["membership_level"] or "free").strip().lower() or "free"
+    if raw_level not in {"free", "member"}:
+        raw_level = "free"
+    expires_ts = None
+    try:
+        raw_exp = user_row["membership_expires_at"]
+        if raw_exp is not None and str(raw_exp).strip() != "":
+            expires_ts = int(float(str(raw_exp)))
+    except Exception:
+        expires_ts = None
+    if raw_level != "member":
+        return "free", expires_ts
+    if expires_ts is not None and time.time() >= float(expires_ts):
+        return "free", expires_ts
+    return "member", expires_ts
+
+
+def is_member_user(user_row) -> bool:
+    level, _ = get_membership_effective(user_row)
     return level == "member"
 
 
@@ -1700,9 +1780,7 @@ def update_user_settings(payload: UserSettingsUpdate, request: Request, current_
 
 @app.get("/api/auth/me")
 def auth_me(current_user=Depends(get_current_user)):
-    level = str(current_user["membership_level"] or "free").strip().lower()
-    if level not in {"free", "member"}:
-        level = "free"
+    level, expires_ts = get_membership_effective(current_user)
     return {
         "id": current_user["id"],
         "username": current_user["username"],
@@ -1713,6 +1791,7 @@ def auth_me(current_user=Depends(get_current_user)):
         "phone_verified": bool(current_user["phone_verified"] or 0),
         "is_admin": is_admin_user(current_user),
         "membership_level": level,
+        "membership_expires_at": expires_ts,
         "is_member": level == "member",
     }
 
@@ -1739,7 +1818,7 @@ def admin_list_users(
         ).fetchone()
         rows = conn.execute(
             """
-            SELECT id, username, email, phone, created_at, email_verified, phone_verified, membership_level
+            SELECT id, username, email, phone, created_at, email_verified, phone_verified, membership_level, membership_expires_at
             FROM users
             WHERE username LIKE ? OR IFNULL(email, '') LIKE ? OR IFNULL(phone, '') LIKE ?
             ORDER BY id DESC
@@ -1758,6 +1837,7 @@ def admin_list_users(
                 "email_verified": bool(row["email_verified"] or 0),
                 "phone_verified": bool(row["phone_verified"] or 0),
                 "membership_level": (str(row["membership_level"] or "free").strip().lower() or "free"),
+                "membership_expires_at": row["membership_expires_at"],
                 "created_at": row["created_at"],
             }
         )
@@ -1798,6 +1878,235 @@ def admin_update_user_membership(
         },
     )
     return {"status": "ok", "user_id": safe_id, "membership_level": level}
+
+
+def _create_order_no() -> str:
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    rnd = secrets.token_urlsafe(12).replace("-", "").replace("_", "")[:18]
+    return f"PO{ts}{rnd}"
+
+
+def _get_active_membership_plans() -> list[dict]:
+    with get_db_conn() as conn:
+        rows = conn.execute(
+            "SELECT code, name, price_cny, currency, duration_days FROM membership_plans WHERE active = 1 ORDER BY price_cny ASC, duration_days ASC"
+        ).fetchall()
+    items = []
+    for r in rows:
+        items.append(
+            {
+                "code": r["code"],
+                "name": r["name"],
+                "price_cny": float(r["price_cny"] or 0.0),
+                "currency": r["currency"],
+                "duration_days": int(r["duration_days"] or 0),
+            }
+        )
+    return items
+
+
+def _get_plan_or_404(plan_code: str) -> sqlite3.Row:
+    code = (plan_code or "").strip()
+    if not code or len(code) > 40:
+        raise HTTPException(status_code=400, detail="套餐不合法")
+    with get_db_conn() as conn:
+        row = conn.execute(
+            "SELECT code, name, price_cny, currency, duration_days, active FROM membership_plans WHERE code = ?",
+            (code,),
+        ).fetchone()
+    if not row or int(row["active"] or 0) != 1:
+        raise HTTPException(status_code=404, detail="套餐不存在或已下架")
+    return row
+
+
+def _mark_order_paid_and_upgrade(order_no: str, provider_txn_id: str, raw_json: dict) -> dict:
+    now = time.time()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    with get_db_conn() as conn:
+        order = conn.execute(
+            "SELECT id, user_id, plan_code, amount_cny, currency, status FROM payment_orders WHERE order_no = ?",
+            (order_no,),
+        ).fetchone()
+        if not order:
+            raise HTTPException(status_code=404, detail="订单不存在")
+        if str(order["status"] or "") == "paid":
+            user = conn.execute("SELECT id, membership_level, membership_expires_at FROM users WHERE id = ?", (int(order["user_id"]),)).fetchone()
+            level, expires_ts = get_membership_effective(user)
+            return {"status": "paid", "order_no": order_no, "membership_level": level, "membership_expires_at": expires_ts}
+        if str(order["status"] or "") != "created":
+            raise HTTPException(status_code=400, detail="订单状态不支持支付")
+
+        plan = conn.execute(
+            "SELECT code, duration_days, price_cny, currency FROM membership_plans WHERE code = ? AND active = 1",
+            (order["plan_code"],),
+        ).fetchone()
+        if not plan:
+            raise HTTPException(status_code=400, detail="套餐不可用")
+
+        amount_cny = float(order["amount_cny"] or 0.0)
+        if abs(amount_cny - float(plan["price_cny"] or 0.0)) > 0.0001:
+            raise HTTPException(status_code=400, detail="订单金额异常")
+        if str(order["currency"] or "") != str(plan["currency"] or ""):
+            raise HTTPException(status_code=400, detail="订单币种异常")
+
+        duration_days = int(plan["duration_days"] or 0)
+        user = conn.execute("SELECT id, membership_expires_at FROM users WHERE id = ?", (int(order["user_id"]),)).fetchone()
+        base = now
+        try:
+            existing_exp = user["membership_expires_at"]
+            if existing_exp is not None and str(existing_exp).strip() != "":
+                existing_ts = float(str(existing_exp))
+                if existing_ts > base:
+                    base = existing_ts
+        except Exception:
+            pass
+        new_expires_ts = None
+        if duration_days > 0:
+            new_expires_ts = int(base + (duration_days * 86400))
+
+        conn.execute(
+            "UPDATE payment_orders SET status = 'paid', paid_at = ?, provider_txn_id = ?, raw_json = ? WHERE order_no = ?",
+            (now_iso, str(provider_txn_id or ""), json.dumps(raw_json or {}, ensure_ascii=False), order_no),
+        )
+        if new_expires_ts is None:
+            conn.execute("UPDATE users SET membership_level = 'member', membership_expires_at = NULL WHERE id = ?", (int(order["user_id"]),))
+        else:
+            conn.execute("UPDATE users SET membership_level = 'member', membership_expires_at = ? WHERE id = ?", (str(new_expires_ts), int(order["user_id"])))
+        conn.commit()
+    return {"status": "paid", "order_no": order_no, "membership_level": "member", "membership_expires_at": new_expires_ts}
+
+
+class BillingCheckoutRequest(BaseModel):
+    plan_code: str = Field(..., min_length=2, max_length=40)
+
+
+class BillingMockCompleteRequest(BaseModel):
+    order_no: str = Field(..., min_length=8, max_length=80)
+
+
+@app.get("/api/billing/plans")
+def billing_plans():
+    return {"items": _get_active_membership_plans()}
+
+
+@app.post("/api/billing/checkout")
+def billing_checkout(payload: BillingCheckoutRequest, request: Request, current_user=Depends(get_current_user)):
+    plan = _get_plan_or_404(payload.plan_code)
+    order_no = _create_order_no()
+    created_at = datetime.now(timezone.utc).isoformat()
+    with get_db_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO payment_orders (order_no, user_id, plan_code, amount_cny, currency, provider, status, created_at, paid_at, provider_txn_id, raw_json)
+            VALUES (?, ?, ?, ?, ?, ?, 'created', ?, NULL, NULL, NULL)
+            """,
+            (
+                order_no,
+                int(current_user["id"]),
+                plan["code"],
+                float(plan["price_cny"] or 0.0),
+                plan["currency"],
+                PAYMENT_PROVIDER,
+                created_at,
+            ),
+        )
+        conn.commit()
+    write_audit_event(
+        action="billing.order.created",
+        request=request,
+        user=current_user,
+        detail={"order_no": order_no, "plan_code": plan["code"], "amount_cny": float(plan["price_cny"] or 0.0), "provider": PAYMENT_PROVIDER},
+    )
+    pay_url = f"/pay/mock?order_no={order_no}" if PAYMENT_PROVIDER == "mock" else ""
+    return {"order_no": order_no, "plan": {"code": plan["code"], "name": plan["name"]}, "amount_cny": float(plan["price_cny"] or 0.0), "currency": plan["currency"], "pay_url": pay_url}
+
+
+@app.get("/api/billing/orders")
+def billing_orders(limit: int = 20, offset: int = 0, current_user=Depends(get_current_user)):
+    safe_limit = max(1, min(int(limit), 100))
+    safe_offset = max(0, int(offset))
+    with get_db_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT order_no, plan_code, amount_cny, currency, provider, status, created_at, paid_at
+            FROM payment_orders
+            WHERE user_id = ?
+            ORDER BY id DESC
+            LIMIT ? OFFSET ?
+            """,
+            (int(current_user["id"]), safe_limit, safe_offset),
+        ).fetchall()
+    items = []
+    for r in rows:
+        items.append(
+            {
+                "order_no": r["order_no"],
+                "plan_code": r["plan_code"],
+                "amount_cny": float(r["amount_cny"] or 0.0),
+                "currency": r["currency"],
+                "provider": r["provider"],
+                "status": r["status"],
+                "created_at": r["created_at"],
+                "paid_at": r["paid_at"],
+            }
+        )
+    return {"items": items, "limit": safe_limit, "offset": safe_offset}
+
+
+@app.post("/api/billing/mock/complete")
+def billing_mock_complete(payload: BillingMockCompleteRequest, request: Request, current_user=Depends(get_current_user)):
+    order_no = (payload.order_no or "").strip()
+    if not order_no:
+        raise HTTPException(status_code=400, detail="订单号不合法")
+    with get_db_conn() as conn:
+        order = conn.execute(
+            "SELECT order_no, user_id, plan_code, amount_cny, currency, status FROM payment_orders WHERE order_no = ?",
+            (order_no,),
+        ).fetchone()
+    if not order or int(order["user_id"]) != int(current_user["id"]):
+        raise HTTPException(status_code=404, detail="订单不存在")
+    provider_txn_id = f"MOCK{secrets.token_urlsafe(10)}"
+    result = _mark_order_paid_and_upgrade(order_no=order_no, provider_txn_id=provider_txn_id, raw_json={"provider": "mock", "order_no": order_no, "paid_at": datetime.now(timezone.utc).isoformat()})
+    write_audit_event(
+        action="billing.order.paid",
+        request=request,
+        user=current_user,
+        detail={"order_no": order_no, "provider": "mock", "membership_expires_at": result.get("membership_expires_at")},
+    )
+    return result
+
+
+@app.post("/api/billing/webhook")
+async def billing_webhook(request: Request):
+    body = await request.body()
+    provided = (request.headers.get("X-Payment-Signature") or "").strip()
+    expected = hmac.new(PAYMENT_WEBHOOK_SECRET.encode("utf-8"), body, hashlib.sha256).hexdigest()
+    if not provided or not hmac.compare_digest(provided, expected):
+        raise HTTPException(status_code=401, detail="签名校验失败")
+    try:
+        event = json.loads(body.decode("utf-8") or "{}")
+    except Exception:
+        raise HTTPException(status_code=400, detail="事件格式不合法")
+    order_no = str(event.get("order_no") or "").strip()
+    provider = str(event.get("provider") or "").strip().lower()
+    provider_txn_id = str(event.get("provider_txn_id") or "").strip()
+    if not order_no or not provider or not provider_txn_id:
+        raise HTTPException(status_code=400, detail="事件缺少必要字段")
+    with get_db_conn() as conn:
+        row = conn.execute("SELECT provider, user_id FROM payment_orders WHERE order_no = ?", (order_no,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="订单不存在")
+    if str(row["provider"] or "").strip().lower() != provider:
+        raise HTTPException(status_code=400, detail="支付渠道不匹配")
+    result = _mark_order_paid_and_upgrade(order_no=order_no, provider_txn_id=provider_txn_id, raw_json=event)
+    user = get_user_by_id(int(row["user_id"]))
+    write_audit_event(
+        action="billing.webhook.paid",
+        request=request,
+        user=user,
+        detail={"order_no": order_no, "provider": provider},
+    )
+    return {"status": "ok", "result": result}
 
 
 @app.get("/api/admin/audit")
@@ -1961,9 +2270,7 @@ async def get_quote(
     success_items = [item for item in results if item["status"] == "success"]
     failed_items = [item for item in results if item["status"] == "failed"]
 
-    membership_level = (str(current_user["membership_level"] or "free").strip().lower() or "free")
-    if membership_level not in {"free", "member"}:
-        membership_level = "free"
+    membership_level, membership_expires_at = get_membership_effective(current_user)
     discount_percent = float(MEMBER_DISCOUNT_PERCENT or 0.0)
     if discount_percent < 0:
         discount_percent = 0.0
@@ -1992,6 +2299,7 @@ async def get_quote(
         "summary_total_time_h": round(sum(item.get("estimated_time_h", 0) for item in success_items), 2),
         "results": results,
         "membership_level": membership_level,
+        "membership_expires_at": membership_expires_at,
         "member_discount_percent": round(discount_percent, 2) if membership_level == "member" else 0.0,
     }
     write_audit_event(
@@ -2045,6 +2353,88 @@ async def register_page():
 async def admin_users_page():
     with open("static/admin_users.html", "r", encoding="utf-8") as f:
         return f.read()
+
+
+@app.get("/pay/mock", response_class=HTMLResponse)
+def pay_mock(order_no: str = ""):
+    safe_order_no = (order_no or "").strip()[:80]
+    return f"""
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>模拟支付</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen p-4 lg:p-6">
+  <div class="max-w-lg mx-auto bg-white rounded-xl shadow-md overflow-hidden">
+    <div class="p-6 space-y-4">
+      <div>
+        <div class="uppercase tracking-wide text-sm text-indigo-500 font-semibold mb-1">Mock Payment</div>
+        <h2 class="text-xl font-bold text-gray-900">会员充值（模拟支付）</h2>
+        <p class="text-xs text-gray-500 mt-1">订单号：<span class="font-mono">{safe_order_no or "-"}</span></p>
+      </div>
+      <div class="text-sm text-gray-700 leading-relaxed">
+        这是开发用的模拟支付页。点击“确认支付”后，系统会校验订单并将你的账号升级为会员。
+      </div>
+      <p id="msg" class="hidden text-xs"></p>
+      <div class="flex gap-2">
+        <button id="pay-btn" type="button" class="flex-1 py-2 px-3 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700">确认支付</button>
+        <a href="/" class="py-2 px-3 rounded-md border border-gray-300 text-gray-700 text-sm hover:bg-gray-50">返回首页</a>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    const TOKEN_STORAGE_KEY = "demo_access_token_v1";
+    const authToken = localStorage.getItem(TOKEN_STORAGE_KEY) || "";
+    const orderNo = {json.dumps(safe_order_no)};
+    const msg = document.getElementById('msg');
+    const payBtn = document.getElementById('pay-btn');
+
+    function showMsg(text, ok = false) {{
+      msg.textContent = text;
+      msg.className = ok ? "text-xs text-green-600" : "text-xs text-red-600";
+      msg.classList.remove('hidden');
+    }}
+
+    async function doPay() {{
+      if (!orderNo) {{
+        showMsg('订单号缺失', false);
+        return;
+      }}
+      if (!authToken) {{
+        showMsg('未登录，请先回到首页登录后再支付', false);
+        return;
+      }}
+      payBtn.disabled = true;
+      payBtn.textContent = '处理中...';
+      try {{
+        const resp = await fetch('/api/billing/mock/complete', {{
+          method: 'POST',
+          headers: {{
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${{authToken}}`
+          }},
+          body: JSON.stringify({{ order_no: orderNo }})
+        }});
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail || '支付失败');
+        showMsg(`支付成功，会员已生效。到期时间：${{data.membership_expires_at || '永久'}}`, true);
+        payBtn.textContent = '已支付';
+      }} catch (e) {{
+        showMsg(e.message || '支付失败', false);
+        payBtn.disabled = false;
+        payBtn.textContent = '确认支付';
+      }}
+    }}
+
+    payBtn.addEventListener('click', doPay);
+  </script>
+</body>
+</html>
+"""
 
 
 @app.get("/healthz")

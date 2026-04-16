@@ -27,6 +27,7 @@
                     <div id="user-menu" class="hidden relative">
                         <button id="user-menu-btn" type="button" class="text-sm px-3 py-1.5 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"></button>
                         <div id="user-dropdown" class="hidden absolute right-0 mt-2 w-40 rounded-md border border-gray-200 bg-white shadow-lg z-20">
+                            <button id="open-membership-btn" type="button" class="w-full text-left text-xs px-3 py-2 hover:bg-gray-50">会员充值</button>
                             <button id="open-admin-users-btn" type="button" class="hidden w-full text-left text-xs px-3 py-2 hover:bg-gray-50">用户管理</button>
                             <button id="open-user-center-btn" type="button" class="w-full text-left text-xs px-3 py-2 hover:bg-gray-50">用户中心</button>
                             <button id="logout-btn" type="button" class="w-full text-left text-xs px-3 py-2 text-red-600 hover:bg-red-50">退出登录</button>
@@ -149,6 +150,44 @@
                             <div class="grid grid-cols-2 gap-2">
                                 <button id="login-submit-btn" type="button" class="w-full py-2 px-3 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700">登录</button>
                                 <button id="register-submit-btn" type="button" class="w-full py-2 px-3 rounded-md border border-indigo-300 text-indigo-700 text-sm hover:bg-indigo-50">注册</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 会员充值弹窗 -->
+            <div id="membership-modal" class="hidden fixed inset-0 z-50">
+                <div id="membership-backdrop" class="absolute inset-0 bg-black/50"></div>
+                <div class="relative z-10 h-full w-full flex items-center justify-center p-4">
+                    <div class="w-full max-w-lg bg-white rounded-lg shadow-xl overflow-hidden">
+                        <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                            <h4 class="text-sm font-semibold text-gray-800">会员充值</h4>
+                            <button id="membership-close-btn" type="button" class="text-gray-500 hover:text-gray-700">关闭</button>
+                        </div>
+                        <div class="p-4 space-y-3">
+                            <p class="text-xs text-gray-600">选择套餐后会打开支付页面，支付完成后回到这里点击“刷新会员状态”。</p>
+                            <div id="membership-plans" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+                            <p id="membership-msg" class="hidden text-xs"></p>
+                            <div class="flex gap-2">
+                                <button id="membership-refresh-btn" type="button" class="flex-1 py-2 px-3 rounded-md border border-indigo-300 text-indigo-700 text-sm hover:bg-indigo-50">刷新会员状态</button>
+                                <button id="membership-orders-btn" type="button" class="flex-1 py-2 px-3 rounded-md border border-gray-300 text-gray-700 text-sm hover:bg-gray-50">查看订单</button>
+                            </div>
+                            <div id="membership-orders" class="hidden overflow-x-auto border border-gray-200 rounded-md">
+                                <table class="min-w-full text-[11px] text-left">
+                                    <thead class="bg-gray-50 text-gray-600">
+                                        <tr>
+                                            <th class="px-2 py-2">订单号</th>
+                                            <th class="px-2 py-2">套餐</th>
+                                            <th class="px-2 py-2">金额</th>
+                                            <th class="px-2 py-2">状态</th>
+                                            <th class="px-2 py-2">创建</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="membership-orders-tbody" class="bg-white divide-y divide-gray-100">
+                                        <tr><td colspan="5" class="px-2 py-3 text-gray-500">暂无数据</td></tr>
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     </div>
@@ -359,6 +398,7 @@
             const userMenu = document.getElementById('user-menu');
             const userMenuBtn = document.getElementById('user-menu-btn');
             const userDropdown = document.getElementById('user-dropdown');
+            const openMembershipBtn = document.getElementById('open-membership-btn');
             const openAdminUsersBtn = document.getElementById('open-admin-users-btn');
             const openUserCenterBtn = document.getElementById('open-user-center-btn');
             const logoutBtn = document.getElementById('logout-btn');
@@ -373,6 +413,16 @@
             const loginSubmitBtn = document.getElementById('login-submit-btn');
             const registerSubmitBtn = document.getElementById('register-submit-btn');
             const loginError = document.getElementById('login-error');
+
+            const membershipModal = document.getElementById('membership-modal');
+            const membershipBackdrop = document.getElementById('membership-backdrop');
+            const membershipCloseBtn = document.getElementById('membership-close-btn');
+            const membershipPlans = document.getElementById('membership-plans');
+            const membershipMsg = document.getElementById('membership-msg');
+            const membershipRefreshBtn = document.getElementById('membership-refresh-btn');
+            const membershipOrdersBtn = document.getElementById('membership-orders-btn');
+            const membershipOrders = document.getElementById('membership-orders');
+            const membershipOrdersTbody = document.getElementById('membership-orders-tbody');
             const optionsSummary = document.getElementById('options-summary');
             const optionsModal = document.getElementById('options-modal');
             const optionsBackdrop = document.getElementById('options-backdrop');
@@ -516,7 +566,8 @@
                 if (currentUser) {
                     openLoginBtn.classList.add('hidden');
                     userMenu.classList.remove('hidden');
-                    userMenuBtn.textContent = `${currentUser.username}`;
+                    const isMember = !!currentUser.is_member;
+                    userMenuBtn.textContent = isMember ? `${currentUser.username}（会员）` : `${currentUser.username}`;
                     if (currentUser.is_admin) {
                         openAdminUsersBtn.classList.remove('hidden');
                     } else {
@@ -567,6 +618,133 @@
                     renderAuthUI();
                 }
                 return response;
+            }
+
+            function showMembershipMsg(text, ok = false) {
+                membershipMsg.textContent = text;
+                membershipMsg.className = ok ? "text-xs text-green-600" : "text-xs text-red-600";
+                membershipMsg.classList.remove('hidden');
+            }
+
+            function clearMembershipMsg() {
+                membershipMsg.classList.add('hidden');
+                membershipMsg.textContent = '';
+            }
+
+            function openMembershipModal() {
+                if (!currentUser || !authToken) {
+                    openLoginModal();
+                    return;
+                }
+                clearMembershipMsg();
+                membershipOrders.classList.add('hidden');
+                membershipModal.classList.remove('hidden');
+                loadMembershipPlans();
+            }
+
+            function closeMembershipModal() {
+                membershipModal.classList.add('hidden');
+                clearMembershipMsg();
+            }
+
+            async function refreshMembershipStatus() {
+                if (!authToken) return;
+                try {
+                    const resp = await authFetch('/api/auth/me');
+                    if (!resp.ok) throw new Error('刷新失败');
+                    currentUser = await resp.json();
+                    saveUserSession();
+                    renderAuthUI();
+                    showMembershipMsg('会员状态已刷新', true);
+                } catch (e) {
+                    showMembershipMsg(e.message || '刷新失败', false);
+                }
+            }
+
+            async function loadMembershipPlans() {
+                membershipPlans.innerHTML = '<div class="text-xs text-gray-500">加载中...</div>';
+                try {
+                    const resp = await fetch('/api/billing/plans');
+                    const data = await resp.json();
+                    if (!resp.ok) throw new Error(data.detail || '加载失败');
+                    const items = data.items || [];
+                    if (!items.length) {
+                        membershipPlans.innerHTML = '<div class="text-xs text-gray-500">暂无可用套餐</div>';
+                        return;
+                    }
+                    membershipPlans.innerHTML = items.map((p) => `
+                        <div class="border border-gray-200 rounded-md p-3 bg-gray-50 flex flex-col gap-2">
+                            <div class="text-sm font-semibold text-gray-900">${p.name}</div>
+                            <div class="text-xs text-gray-600">¥ ${Number(p.price_cny || 0).toFixed(2)} / ${p.duration_days} 天</div>
+                            <button type="button" data-plan="${p.code}" class="mt-1 w-full py-2 px-3 rounded-md bg-indigo-600 text-white text-xs hover:bg-indigo-700">立即支付</button>
+                        </div>
+                    `).join('');
+                    membershipPlans.querySelectorAll('[data-plan]').forEach((btn) => {
+                        btn.addEventListener('click', () => {
+                            const code = btn.getAttribute('data-plan');
+                            startCheckout(code);
+                        });
+                    });
+                } catch (e) {
+                    membershipPlans.innerHTML = '<div class="text-xs text-red-600">加载失败</div>';
+                    showMembershipMsg(e.message || '加载失败', false);
+                }
+            }
+
+            async function startCheckout(planCode) {
+                if (!currentUser || !authToken) {
+                    openLoginModal();
+                    return;
+                }
+                clearMembershipMsg();
+                try {
+                    const resp = await authFetch('/api/billing/checkout', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ plan_code: planCode }),
+                    });
+                    const data = await resp.json();
+                    if (!resp.ok) throw new Error(data.detail || '创建订单失败');
+                    if (data.pay_url) {
+                        window.open(data.pay_url, '_blank', 'noopener');
+                        showMembershipMsg(`已打开支付页面：订单 ${data.order_no}。支付完成后点击“刷新会员状态”。`, true);
+                    } else {
+                        showMembershipMsg('当前未配置支付渠道', false);
+                    }
+                } catch (e) {
+                    showMembershipMsg(e.message || '创建订单失败', false);
+                }
+            }
+
+            async function toggleMembershipOrders() {
+                if (membershipOrders.classList.contains('hidden')) {
+                    membershipOrders.classList.remove('hidden');
+                    membershipOrdersTbody.innerHTML = '<tr><td colspan="5" class="px-2 py-3 text-gray-500">加载中...</td></tr>';
+                    try {
+                        const resp = await authFetch('/api/billing/orders?limit=20&offset=0');
+                        const data = await resp.json();
+                        if (!resp.ok) throw new Error(data.detail || '加载失败');
+                        const items = data.items || [];
+                        if (!items.length) {
+                            membershipOrdersTbody.innerHTML = '<tr><td colspan="5" class="px-2 py-3 text-gray-500">暂无数据</td></tr>';
+                            return;
+                        }
+                        membershipOrdersTbody.innerHTML = items.map((o) => `
+                            <tr>
+                                <td class="px-2 py-2 font-mono">${o.order_no}</td>
+                                <td class="px-2 py-2">${o.plan_code}</td>
+                                <td class="px-2 py-2">¥ ${Number(o.amount_cny || 0).toFixed(2)}</td>
+                                <td class="px-2 py-2">${o.status}</td>
+                                <td class="px-2 py-2">${o.created_at || '-'}</td>
+                            </tr>
+                        `).join('');
+                    } catch (e) {
+                        membershipOrdersTbody.innerHTML = '<tr><td colspan="5" class="px-2 py-3 text-red-600">加载失败</td></tr>';
+                        showMembershipMsg(e.message || '加载失败', false);
+                    }
+                } else {
+                    membershipOrders.classList.add('hidden');
+                }
             }
 
             function refreshOptionsSummary() {
@@ -1051,12 +1229,21 @@
                 userDropdown.classList.add('hidden');
                 window.location.href = '/admin/users';
             });
+            openMembershipBtn.addEventListener('click', () => {
+                userDropdown.classList.add('hidden');
+                openMembershipModal();
+            });
             openUserCenterBtn.addEventListener('click', () => {
                 userDropdown.classList.add('hidden');
                 if (!currentUser) return;
                 renderUserCenterUI();
                 userCenterModal.classList.remove('hidden');
             });
+
+            membershipCloseBtn.addEventListener('click', closeMembershipModal);
+            membershipBackdrop.addEventListener('click', closeMembershipModal);
+            membershipRefreshBtn.addEventListener('click', refreshMembershipStatus);
+            membershipOrdersBtn.addEventListener('click', toggleMembershipOrders);
             
             userCenterCloseBtn.addEventListener('click', () => {
                 userCenterModal.classList.add('hidden');
