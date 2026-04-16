@@ -8,34 +8,41 @@
 </head>
 <body class="bg-gray-50 min-h-screen p-4 lg:p-6">
     <div class="max-w-lg mx-auto bg-white rounded-xl shadow-md overflow-hidden">
-        <div class="p-8 space-y-6">
-            <div class="flex items-start justify-between gap-4">
+        <div class="p-5 sm:p-8 space-y-6">
+            <div class="flex flex-col sm:flex-row items-start sm:justify-between gap-4">
                 <div>
                     <div class="uppercase tracking-wide text-sm text-indigo-500 font-semibold mb-1">3D Printing Parts Automated Quoting System</div>
                     <h2 class="text-2xl font-bold text-gray-900">用户注册</h2>
                 </div>
-                <a href="/" class="text-sm px-3 py-1.5 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">返回登录</a>
+                <a href="/?login=1" class="text-sm px-3 py-1.5 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 whitespace-nowrap shrink-0">返回登录</a>
             </div>
 
             <div class="space-y-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700">用户名</label>
                     <input id="reg-username" type="text" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" placeholder="字母/数字/._-，3-50位" />
+                    <p id="reg-username-check" class="hidden text-xs mt-1"></p>
                 </div>
-                <div>
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="reg-channel-email" type="button" class="w-full px-3 py-1.5 rounded-md bg-indigo-600 text-white text-sm">邮箱注册</button>
+                    <button id="reg-channel-phone" type="button" class="w-full px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 text-sm hover:bg-gray-50">手机注册</button>
+                </div>
+                <div id="reg-email-section">
                     <label class="block text-sm font-medium text-gray-700">邮箱</label>
-                    <div class="grid grid-cols-[1fr,auto] gap-2">
+                    <div class="grid grid-cols-1 sm:grid-cols-[1fr,auto] gap-2">
                         <input id="reg-email" type="email" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" placeholder="name@example.com" />
-                        <button id="send-email-code-btn" type="button" class="mt-1 px-3 py-2 rounded-md border border-indigo-200 text-indigo-700 text-xs hover:bg-indigo-50">发送验证码</button>
+                        <button id="send-email-code-btn" type="button" class="px-3 py-2 rounded-md border border-indigo-200 text-indigo-700 text-xs hover:bg-indigo-50 w-full sm:w-auto sm:mt-1">发送验证码</button>
                     </div>
+                    <p id="reg-email-check" class="hidden text-xs mt-1"></p>
                     <input id="reg-email-code" type="text" class="mt-2 block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" placeholder="邮箱验证码（6位）" />
                 </div>
-                <div>
+                <div id="reg-phone-section" class="hidden">
                     <label class="block text-sm font-medium text-gray-700">手机号</label>
-                    <div class="grid grid-cols-[1fr,auto] gap-2">
+                    <div class="grid grid-cols-1 sm:grid-cols-[1fr,auto] gap-2">
                         <input id="reg-phone" type="tel" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" placeholder="+86..." />
-                        <button id="send-phone-code-btn" type="button" class="mt-1 px-3 py-2 rounded-md border border-indigo-200 text-indigo-700 text-xs hover:bg-indigo-50">发送验证码</button>
+                        <button id="send-phone-code-btn" type="button" class="px-3 py-2 rounded-md border border-indigo-200 text-indigo-700 text-xs hover:bg-indigo-50 w-full sm:w-auto sm:mt-1">发送验证码</button>
                     </div>
+                    <p id="reg-phone-check" class="hidden text-xs mt-1"></p>
                     <input id="reg-phone-code" type="text" class="mt-2 block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" placeholder="短信验证码（6位）" />
                 </div>
                 <div>
@@ -43,16 +50,26 @@
                     <input id="reg-password" type="password" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" placeholder="至少6位，字母+数字" />
                 </div>
 
-                <div class="grid grid-cols-[1fr,auto] gap-2 items-end">
+                <div class="grid grid-cols-1 sm:grid-cols-[1fr,auto] gap-2 items-end">
                     <div>
                         <label class="block text-sm font-medium text-gray-700">图形验证码</label>
                         <input id="reg-captcha-code" type="text" maxlength="8" autocomplete="off" autocapitalize="characters" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" placeholder="请输入 4 位验证码" />
                     </div>
-                    <div class="flex items-center gap-2">
-                        <img id="reg-captcha-img" alt="验证码" class="h-11 w-36 border border-gray-200 rounded-md bg-white object-contain" />
-                        <button id="reg-captcha-refresh-btn" type="button" class="h-11 px-3 rounded-md border border-indigo-200 text-indigo-700 text-xs hover:bg-indigo-50">刷新</button>
+                    <div class="grid grid-cols-[1fr,auto] gap-2">
+                        <img id="reg-captcha-img" alt="验证码" class="h-11 w-full sm:w-36 border border-gray-200 rounded-md bg-white object-contain" />
+                        <button id="reg-captcha-refresh-btn" type="button" class="h-11 px-3 rounded-md border border-indigo-200 text-indigo-700 text-xs hover:bg-indigo-50 whitespace-nowrap">刷新</button>
                     </div>
                 </div>
+
+                <label class="flex items-start gap-2 text-xs text-gray-600">
+                    <input id="reg-accept-legal" type="checkbox" class="mt-0.5" />
+                    <span>
+                        我已阅读并同意
+                        <a href="/legal/terms" target="_blank" rel="noopener" class="text-indigo-600 hover:text-indigo-800">《用户协议》</a>
+                        和
+                        <a href="/legal/privacy" target="_blank" rel="noopener" class="text-indigo-600 hover:text-indigo-800">《隐私政策》</a>
+                    </span>
+                </label>
 
                 <p id="reg-msg" class="hidden text-xs"></p>
                 <button id="reg-submit-btn" type="button" class="w-full py-2 px-3 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700">注册并登录</button>
@@ -65,21 +82,36 @@
         const USER_STORAGE_KEY = "demo_user_v1";
 
         const usernameEl = document.getElementById('reg-username');
+        const channelEmailBtn = document.getElementById('reg-channel-email');
+        const channelPhoneBtn = document.getElementById('reg-channel-phone');
+        const emailSection = document.getElementById('reg-email-section');
+        const phoneSection = document.getElementById('reg-phone-section');
         const emailEl = document.getElementById('reg-email');
         const phoneEl = document.getElementById('reg-phone');
         const passwordEl = document.getElementById('reg-password');
         const emailCodeEl = document.getElementById('reg-email-code');
         const phoneCodeEl = document.getElementById('reg-phone-code');
+        const usernameCheckEl = document.getElementById('reg-username-check');
+        const emailCheckEl = document.getElementById('reg-email-check');
+        const phoneCheckEl = document.getElementById('reg-phone-check');
         const captchaImgEl = document.getElementById('reg-captcha-img');
         const captchaCodeEl = document.getElementById('reg-captcha-code');
         const refreshCaptchaBtn = document.getElementById('reg-captcha-refresh-btn');
         const sendEmailBtn = document.getElementById('send-email-code-btn');
         const sendPhoneBtn = document.getElementById('send-phone-code-btn');
         const submitBtn = document.getElementById('reg-submit-btn');
+        const acceptLegalEl = document.getElementById('reg-accept-legal');
         const msgEl = document.getElementById('reg-msg');
 
         let captchaId = "";
         let captchaUrl = "";
+        let registerChannel = "email";
+        let usernameExists = false;
+        let emailExists = false;
+        let phoneExists = false;
+        let usernameTimer = null;
+        let emailTimer = null;
+        let phoneTimer = null;
 
         function showMsg(text, type = "error") {
             msgEl.textContent = text;
@@ -90,6 +122,111 @@
         function clearMsg() {
             msgEl.classList.add('hidden');
             msgEl.textContent = "";
+        }
+
+        function clearDuplicateErrorMsg() {
+            const text = (msgEl.textContent || '').trim();
+            if (text.includes('已被注册')) {
+                clearMsg();
+            }
+        }
+
+        function setCheckHint(el, text, type = "neutral") {
+            if (!el) return;
+            if (!text) {
+                el.classList.add('hidden');
+                el.textContent = '';
+                return;
+            }
+            el.textContent = text;
+            if (type === "ok") {
+                el.className = "text-xs mt-1 text-green-600";
+            } else if (type === "error") {
+                el.className = "text-xs mt-1 text-red-600";
+            } else {
+                el.className = "text-xs mt-1 text-gray-500";
+            }
+            el.classList.remove('hidden');
+        }
+
+        async function checkExists(field, value) {
+            const v = (value || '').trim();
+            if (!v) return { valid: false, exists: false, empty: true };
+            try {
+                const res = await fetch('/api/auth/register/check', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ field, value: v }),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || '检查失败');
+                return data;
+            } catch (e) {
+                return { valid: false, exists: false, message: e.message || '检查失败', failed: true };
+            }
+        }
+
+        async function checkUsernameExists() {
+            const data = await checkExists('username', usernameEl.value);
+            if (data.empty) {
+                usernameExists = false;
+                clearDuplicateErrorMsg();
+                return setCheckHint(usernameCheckEl, '');
+            }
+            if (data.failed) {
+                usernameExists = false;
+                return setCheckHint(usernameCheckEl, '');
+            }
+            if (!data.valid) {
+                usernameExists = false;
+                return setCheckHint(usernameCheckEl, '');
+            }
+            usernameExists = !!data.exists;
+            if (usernameExists) return setCheckHint(usernameCheckEl, '该用户名已被注册', 'error');
+            clearDuplicateErrorMsg();
+            return setCheckHint(usernameCheckEl, '');
+        }
+
+        async function checkEmailExists() {
+            const data = await checkExists('email', emailEl.value);
+            if (data.empty) {
+                emailExists = false;
+                clearDuplicateErrorMsg();
+                return setCheckHint(emailCheckEl, '');
+            }
+            if (data.failed) {
+                emailExists = false;
+                return setCheckHint(emailCheckEl, '');
+            }
+            if (!data.valid) {
+                emailExists = false;
+                return setCheckHint(emailCheckEl, '');
+            }
+            emailExists = !!data.exists;
+            if (emailExists) return setCheckHint(emailCheckEl, '该邮箱已被注册', 'error');
+            clearDuplicateErrorMsg();
+            return setCheckHint(emailCheckEl, '');
+        }
+
+        async function checkPhoneExists() {
+            const data = await checkExists('phone', phoneEl.value);
+            if (data.empty) {
+                phoneExists = false;
+                clearDuplicateErrorMsg();
+                return setCheckHint(phoneCheckEl, '');
+            }
+            if (data.failed) {
+                phoneExists = false;
+                return setCheckHint(phoneCheckEl, '');
+            }
+            if (!data.valid) {
+                phoneExists = false;
+                return setCheckHint(phoneCheckEl, '');
+            }
+            phoneExists = !!data.exists;
+            if (phoneExists) return setCheckHint(phoneCheckEl, '该手机号已被注册', 'error');
+            clearDuplicateErrorMsg();
+            return setCheckHint(phoneCheckEl, '');
         }
 
         async function refreshCaptcha() {
@@ -112,6 +249,20 @@
 
         function passwordStrongEnough(pw) {
             return pw.length >= 6 && /[A-Za-z]/.test(pw) && /\d/.test(pw);
+        }
+
+        function setRegisterChannel(ch) {
+            registerChannel = ch === "phone" ? "phone" : "email";
+            const emailActive = registerChannel === "email";
+            emailSection.classList.toggle('hidden', !emailActive);
+            phoneSection.classList.toggle('hidden', emailActive);
+            channelEmailBtn.className = emailActive
+                ? "w-full px-3 py-1.5 rounded-md bg-indigo-600 text-white text-sm"
+                : "w-full px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 text-sm hover:bg-gray-50";
+            channelPhoneBtn.className = !emailActive
+                ? "w-full px-3 py-1.5 rounded-md bg-indigo-600 text-white text-sm"
+                : "w-full px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 text-sm hover:bg-gray-50";
+            clearMsg();
         }
 
         async function sendVerifyCode(channel, target) {
@@ -140,7 +291,13 @@
                 showMsg('请输入邮箱', 'error');
                 return;
             }
-            sendVerifyCode('email', email);
+            checkEmailExists().then(() => {
+                if (emailExists) {
+                    showMsg('该邮箱已被注册，请直接登录或更换邮箱', 'error');
+                    return;
+                }
+                sendVerifyCode('email', email);
+            });
         });
 
         sendPhoneBtn.addEventListener('click', () => {
@@ -149,8 +306,36 @@
                 showMsg('请输入手机号', 'error');
                 return;
             }
-            sendVerifyCode('phone', phone);
+            checkPhoneExists().then(() => {
+                if (phoneExists) {
+                    showMsg('该手机号已被注册，请直接登录或更换手机号', 'error');
+                    return;
+                }
+                sendVerifyCode('phone', phone);
+            });
         });
+
+        usernameEl.addEventListener('blur', checkUsernameExists);
+        emailEl.addEventListener('blur', checkEmailExists);
+        phoneEl.addEventListener('blur', checkPhoneExists);
+        usernameEl.addEventListener('input', () => {
+            clearDuplicateErrorMsg();
+            if (usernameTimer) clearTimeout(usernameTimer);
+            usernameTimer = setTimeout(checkUsernameExists, 400);
+        });
+        emailEl.addEventListener('input', () => {
+            clearDuplicateErrorMsg();
+            if (emailTimer) clearTimeout(emailTimer);
+            emailTimer = setTimeout(checkEmailExists, 400);
+        });
+        phoneEl.addEventListener('input', () => {
+            clearDuplicateErrorMsg();
+            if (phoneTimer) clearTimeout(phoneTimer);
+            phoneTimer = setTimeout(checkPhoneExists, 400);
+        });
+
+        channelEmailBtn.addEventListener('click', () => setRegisterChannel('email'));
+        channelPhoneBtn.addEventListener('click', () => setRegisterChannel('phone'));
 
         refreshCaptchaBtn.addEventListener('click', refreshCaptcha);
 
@@ -163,16 +348,27 @@
             const emailCode = (emailCodeEl.value || '').trim();
             const phoneCode = (phoneCodeEl.value || '').trim();
             const captchaCode = (captchaCodeEl.value || '').trim();
+            const acceptLegal = !!(acceptLegalEl && acceptLegalEl.checked);
 
             if (!username) return showMsg('请输入用户名', 'error');
-            if (!email) return showMsg('请输入邮箱', 'error');
-            if (!phone) return showMsg('请输入手机号', 'error');
             if (!passwordStrongEnough(password)) return showMsg('密码至少6位且必须包含字母和数字', 'error');
-            if (!emailCode) return showMsg('请输入邮箱验证码', 'error');
-            if (!phoneCode) return showMsg('请输入手机验证码', 'error');
             if (!captchaId || !captchaCode) {
                 await refreshCaptcha();
                 return showMsg('请完成图形验证码', 'error');
+            }
+            if (!acceptLegal) return showMsg('请先阅读并同意《用户协议》和《隐私政策》', 'error');
+            await checkUsernameExists();
+            if (usernameExists) return showMsg('用户名已被注册，请更换后重试', 'error');
+            if (registerChannel === 'email') {
+                if (!email) return showMsg('请输入邮箱', 'error');
+                if (!emailCode) return showMsg('请输入邮箱验证码', 'error');
+                await checkEmailExists();
+                if (emailExists) return showMsg('邮箱已被注册，请直接登录或更换邮箱', 'error');
+            } else {
+                if (!phone) return showMsg('请输入手机号', 'error');
+                if (!phoneCode) return showMsg('请输入手机验证码', 'error');
+                await checkPhoneExists();
+                if (phoneExists) return showMsg('手机号已被注册，请直接登录或更换手机号', 'error');
             }
 
             try {
@@ -182,12 +378,15 @@
                     body: JSON.stringify({
                         username,
                         password,
-                        email,
-                        phone,
-                        email_code: emailCode,
-                        phone_code: phoneCode,
+                        register_channel: registerChannel,
+                        email: registerChannel === 'email' ? email : null,
+                        phone: registerChannel === 'phone' ? phone : null,
+                        email_code: registerChannel === 'email' ? emailCode : null,
+                        phone_code: registerChannel === 'phone' ? phoneCode : null,
                         captcha_id: captchaId,
-                        captcha_code: captchaCode
+                        captcha_code: captchaCode,
+                        accept_terms: acceptLegal,
+                        accept_privacy: acceptLegal
                     })
                 });
                 const data = await res.json();
@@ -201,6 +400,7 @@
             }
         });
 
+        setRegisterChannel('email');
         refreshCaptcha();
     </script>
 </body>

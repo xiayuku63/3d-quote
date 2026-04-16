@@ -16,16 +16,16 @@
 </head>
 <body class="bg-gray-50 min-h-screen p-4 lg:p-6">
     <div class="max-w-[1600px] mx-auto bg-white rounded-xl shadow-md overflow-hidden">
-        <div class="p-8">
-            <div class="flex items-start justify-between gap-4 mb-6">
+        <div class="p-5 sm:p-8">
+            <div class="flex flex-col sm:flex-row items-start sm:justify-between gap-4 mb-6">
                 <div>
                     <div class="uppercase tracking-wide text-sm text-indigo-500 font-semibold mb-1">3D Printing Parts Automated Quoting System</div>
                     <h2 class="text-2xl font-bold text-gray-900">3D打印件自动报价系统</h2>
                 </div>
-                <div id="auth-area" class="flex items-center gap-2">
-                    <button id="open-login-btn" type="button" class="text-sm px-3 py-1.5 border border-indigo-200 text-indigo-700 rounded-md hover:bg-indigo-50">登录</button>
+                <div id="auth-area" class="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:justify-end">
+                    <button id="open-login-btn" type="button" class="w-full sm:w-auto text-sm px-3 py-1.5 border border-indigo-200 text-indigo-700 rounded-md hover:bg-indigo-50">登录</button>
                     <div id="user-menu" class="hidden relative">
-                        <button id="user-menu-btn" type="button" class="text-sm px-3 py-1.5 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"></button>
+                        <button id="user-menu-btn" type="button" class="w-full sm:w-auto text-sm px-3 py-1.5 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"></button>
                         <div id="user-dropdown" class="hidden absolute right-0 mt-2 w-40 rounded-md border border-gray-200 bg-white shadow-lg z-20">
                             <button id="open-membership-btn" type="button" class="w-full text-left text-xs px-3 py-2 hover:bg-gray-50">会员充值</button>
                             <button id="open-admin-users-btn" type="button" class="hidden w-full text-left text-xs px-3 py-2 hover:bg-gray-50">用户管理</button>
@@ -136,18 +136,27 @@
                                 <label class="block text-sm font-medium text-gray-700">密码</label>
                                 <input id="login-password" type="password" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" placeholder="请输入密码" />
                             </div>
-                            <div class="grid grid-cols-[1fr,auto] gap-2 items-end">
+                            <div class="grid grid-cols-1 sm:grid-cols-[1fr,auto] gap-2 items-end">
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700">验证码</label>
                                     <input id="login-captcha-code" type="text" maxlength="8" autocomplete="off" autocapitalize="characters" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" placeholder="请输入 4 位验证码" />
                                 </div>
-                                <div class="flex items-center gap-2">
-                                    <img id="login-captcha-img" alt="验证码" class="h-11 w-36 border border-gray-200 rounded-md bg-white object-contain" />
-                                    <button id="login-captcha-refresh-btn" type="button" class="h-11 px-3 rounded-md border border-indigo-200 text-indigo-700 text-xs hover:bg-indigo-50">刷新</button>
+                                <div class="grid grid-cols-[1fr,auto] gap-2">
+                                    <img id="login-captcha-img" alt="验证码" class="h-11 w-full sm:w-36 border border-gray-200 rounded-md bg-white object-contain" />
+                                    <button id="login-captcha-refresh-btn" type="button" class="h-11 px-3 rounded-md border border-indigo-200 text-indigo-700 text-xs hover:bg-indigo-50 whitespace-nowrap">刷新</button>
                                 </div>
                             </div>
+                            <label class="flex items-start gap-2 text-xs text-gray-600">
+                                <input id="login-accept-legal" type="checkbox" class="mt-0.5" />
+                                <span>
+                                    我已阅读并同意
+                                    <a href="/legal/terms" target="_blank" rel="noopener" class="text-indigo-600 hover:text-indigo-800">《用户协议》</a>
+                                    和
+                                    <a href="/legal/privacy" target="_blank" rel="noopener" class="text-indigo-600 hover:text-indigo-800">《隐私政策》</a>
+                                </span>
+                            </label>
                             <p id="login-error" class="hidden text-xs text-red-600"></p>
-                            <div class="grid grid-cols-2 gap-2">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                 <button id="login-submit-btn" type="button" class="w-full py-2 px-3 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700">登录</button>
                                 <button id="register-submit-btn" type="button" class="w-full py-2 px-3 rounded-md border border-indigo-300 text-indigo-700 text-sm hover:bg-indigo-50">注册</button>
                             </div>
@@ -169,9 +178,9 @@
                             <p class="text-xs text-gray-600">选择套餐后会打开支付页面，支付完成后回到这里点击“刷新会员状态”。</p>
                             <div id="membership-plans" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
                             <p id="membership-msg" class="hidden text-xs"></p>
-                            <div class="flex gap-2">
-                                <button id="membership-refresh-btn" type="button" class="flex-1 py-2 px-3 rounded-md border border-indigo-300 text-indigo-700 text-sm hover:bg-indigo-50">刷新会员状态</button>
-                                <button id="membership-orders-btn" type="button" class="flex-1 py-2 px-3 rounded-md border border-gray-300 text-gray-700 text-sm hover:bg-gray-50">查看订单</button>
+                            <div class="flex flex-col sm:flex-row gap-2">
+                                <button id="membership-refresh-btn" type="button" class="w-full sm:flex-1 py-2 px-3 rounded-md border border-indigo-300 text-indigo-700 text-sm hover:bg-indigo-50">刷新会员状态</button>
+                                <button id="membership-orders-btn" type="button" class="w-full sm:flex-1 py-2 px-3 rounded-md border border-gray-300 text-gray-700 text-sm hover:bg-gray-50">查看订单</button>
                             </div>
                             <div id="membership-orders" class="hidden overflow-x-auto border border-gray-200 rounded-md">
                                 <table class="min-w-full text-[11px] text-left">
@@ -410,6 +419,7 @@
             const loginCaptchaImg = document.getElementById('login-captcha-img');
             const loginCaptchaCode = document.getElementById('login-captcha-code');
             const loginCaptchaRefreshBtn = document.getElementById('login-captcha-refresh-btn');
+            const loginAcceptLegal = document.getElementById('login-accept-legal');
             const loginSubmitBtn = document.getElementById('login-submit-btn');
             const registerSubmitBtn = document.getElementById('register-submit-btn');
             const loginError = document.getElementById('login-error');
@@ -554,6 +564,7 @@
                 loginError.textContent = '';
                 loginPassword.value = '';
                 loginCaptchaCode.value = '';
+                if (loginAcceptLegal) loginAcceptLegal.checked = false;
                 loginModal.classList.remove('hidden');
                 refreshLoginCaptcha();
             }
@@ -1180,6 +1191,7 @@
                 const identifier = (loginUsername.value || '').trim();
                 const password = loginPassword.value || '';
                 const captchaCode = (loginCaptchaCode.value || '').trim();
+                const acceptLegal = !!(loginAcceptLegal && loginAcceptLegal.checked);
                 if (!identifier) {
                     loginError.textContent = '请输入账号';
                     loginError.classList.remove('hidden');
@@ -1195,6 +1207,11 @@
                     loginError.classList.remove('hidden');
                     return;
                 }
+                if (!acceptLegal) {
+                    loginError.textContent = '请先阅读并同意《用户协议》和《隐私政策》';
+                    loginError.classList.remove('hidden');
+                    return;
+                }
                 if (!currentCaptchaId) {
                     loginError.textContent = '验证码已失效，请刷新后重试';
                     loginError.classList.remove('hidden');
@@ -1206,7 +1223,14 @@
                     const response = await fetch('/api/auth/login', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ identifier, password, captcha_id: currentCaptchaId, captcha_code: captchaCode })
+                        body: JSON.stringify({
+                            identifier,
+                            password,
+                            captcha_id: currentCaptchaId,
+                            captcha_code: captchaCode,
+                            accept_terms: acceptLegal,
+                            accept_privacy: acceptLegal,
+                        })
                     });
                     const data = await response.json();
                     if (!response.ok) {
@@ -1787,6 +1811,20 @@
 
             async function initializeAuth() {
                 loadUserSession();
+                try {
+                    const params = new URLSearchParams(window.location.search || "");
+                    const shouldOpenLogin = params.get('login') === '1' || (params.get('login') || '').toLowerCase() === 'true';
+                    if (shouldOpenLogin && !authToken) {
+                        openLoginModal();
+                    }
+                    if (params.has('login')) {
+                        params.delete('login');
+                        const query = params.toString();
+                        const newUrl = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash || ''}`;
+                        window.history.replaceState({}, '', newUrl);
+                    }
+                } catch (e) {
+                }
                 if (!authToken) {
                     renderAuthUI();
                     updateDropdowns();

@@ -59,6 +59,9 @@ if not PAYMENT_WEBHOOK_SECRET:
         raise RuntimeError("生产环境必须设置 PAYMENT_WEBHOOK_SECRET")
     PAYMENT_WEBHOOK_SECRET = "dev-only-payment-webhook-secret-change-me"
 
+TERMS_VERSION = os.getenv("TERMS_VERSION", "v1").strip() or "v1"
+PRIVACY_VERSION = os.getenv("PRIVACY_VERSION", "v1").strip() or "v1"
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request, exc):
     return JSONResponse(
@@ -449,6 +452,11 @@ async def security_middleware(request: Request, call_next):
             resp = JSONResponse(status_code=429, content={"detail": "请求过于频繁，请稍后再试"})
             resp.headers["X-Request-ID"] = request.state.request_id
             return resp
+    if path == "/api/auth/register/check" and method == "POST":
+        if not rate_limiter.is_allowed(f"auth_check:{client_ip}", AUTH_RATE_LIMIT_PER_MIN):
+            resp = JSONResponse(status_code=429, content={"detail": "请求过于频繁，请稍后再试"})
+            resp.headers["X-Request-ID"] = request.state.request_id
+            return resp
     if path == "/api/auth/verify/send" and method == "POST":
         if not rate_limiter.is_allowed(f"verify_send_ip:{client_ip}", VERIFY_SEND_RATE_LIMIT_PER_10MIN, window_seconds=600):
             resp = JSONResponse(status_code=429, content={"detail": "请求过于频繁，请稍后再试"})
@@ -484,12 +492,15 @@ async def security_middleware(request: Request, call_next):
 class RegisterRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     password: str = Field(..., min_length=6, max_length=100)
-    email: str = Field(..., min_length=3, max_length=254)
-    phone: str = Field(..., min_length=7, max_length=20)
-    email_code: str = Field(..., min_length=4, max_length=10)
-    phone_code: str = Field(..., min_length=4, max_length=10)
+    register_channel: str = Field(..., min_length=4, max_length=10)
+    email: Optional[str] = Field(default=None, min_length=3, max_length=254)
+    phone: Optional[str] = Field(default=None, min_length=7, max_length=20)
+    email_code: Optional[str] = Field(default=None, min_length=4, max_length=10)
+    phone_code: Optional[str] = Field(default=None, min_length=4, max_length=10)
     captcha_id: str = Field(..., min_length=8, max_length=80)
     captcha_code: str = Field(..., min_length=4, max_length=10)
+    accept_terms: bool
+    accept_privacy: bool
 
 
 class LoginRequest(BaseModel):
@@ -497,6 +508,8 @@ class LoginRequest(BaseModel):
     password: str = Field(..., min_length=6, max_length=100)
     captcha_id: str = Field(..., min_length=8, max_length=80)
     captcha_code: str = Field(..., min_length=4, max_length=10)
+    accept_terms: bool
+    accept_privacy: bool
 
 
 def validate_username_or_raise(username: str) -> str:
@@ -623,6 +636,22 @@ def init_db() -> None:
             pass
         try:
             conn.execute("ALTER TABLE users ADD COLUMN membership_expires_at TEXT")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN terms_accepted_at TEXT")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN privacy_accepted_at TEXT")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN terms_version TEXT")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN privacy_version TEXT")
         except sqlite3.OperationalError:
             pass
 
@@ -866,21 +895,45 @@ def consume_verification_code(channel: str, target: str, code: str) -> bool:
         return True
 
 
-def create_user(username: str, password: str, email: str, phone: str):
+def create_user(username: str, password: str, email: Optional[str], phone: Optional[str], email_verified: int, phone_verified: int):
+    # Hard guard: do not rely only on DB unique constraints, block duplicates at application layer too.
+    if get_user_by_username(username):
+        raise HTTPException(status_code=409, detail="用户名已存在")
+    if email and get_user_by_email(email):
+        raise HTTPException(status_code=409, detail="邮箱已存在")
+    if phone and get_user_by_phone(phone):
+        raise HTTPException(status_code=409, detail="手机号已存在")
+
     password_hash = get_password_hash(password)
     created_at = datetime.now(timezone.utc).isoformat()
     materials_json = json.dumps(DEFAULT_MATERIALS)
     colors_json = json.dumps(DEFAULT_COLORS)
     pricing_json = json.dumps(DEFAULT_PRICING_CONFIG)
-    email_verified = 1
-    phone_verified = 1
     membership_level = "free"
     membership_expires_at = None
+    accepted_at = datetime.now(timezone.utc).isoformat()
     try:
         with get_db_conn() as conn:
             conn.execute(
-                "INSERT INTO users (username, password_hash, created_at, materials, colors, pricing_config, email, phone, email_verified, phone_verified, membership_level, membership_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (username, password_hash, created_at, materials_json, colors_json, pricing_json, email, phone, email_verified, phone_verified, membership_level, membership_expires_at),
+                "INSERT INTO users (username, password_hash, created_at, materials, colors, pricing_config, email, phone, email_verified, phone_verified, membership_level, membership_expires_at, terms_accepted_at, privacy_accepted_at, terms_version, privacy_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    username,
+                    password_hash,
+                    created_at,
+                    materials_json,
+                    colors_json,
+                    pricing_json,
+                    email,
+                    phone,
+                    email_verified,
+                    phone_verified,
+                    membership_level,
+                    membership_expires_at,
+                    accepted_at,
+                    accepted_at,
+                    TERMS_VERSION,
+                    PRIVACY_VERSION,
+                ),
             )
             conn.commit()
     except sqlite3.IntegrityError:
@@ -949,6 +1002,25 @@ def get_membership_effective(user_row) -> tuple[str, Optional[int]]:
 def is_member_user(user_row) -> bool:
     level, _ = get_membership_effective(user_row)
     return level == "member"
+
+
+def require_legal_acceptance_or_raise(accept_terms: bool, accept_privacy: bool) -> None:
+    if not bool(accept_terms) or not bool(accept_privacy):
+        raise HTTPException(status_code=400, detail="请先阅读并同意《用户协议》和《隐私政策》")
+
+
+def record_legal_acceptance(user_id: int) -> None:
+    now_iso = datetime.now(timezone.utc).isoformat()
+    with get_db_conn() as conn:
+        conn.execute(
+            """
+            UPDATE users
+            SET terms_accepted_at = ?, privacy_accepted_at = ?, terms_version = ?, privacy_version = ?
+            WHERE id = ?
+            """,
+            (now_iso, now_iso, TERMS_VERSION, PRIVACY_VERSION, int(user_id)),
+        )
+        conn.commit()
 
 
 def require_admin(current_user):
@@ -1546,6 +1618,11 @@ class VerifyConfirmRequest(BaseModel):
     code: str = Field(..., min_length=4, max_length=10)
 
 
+class RegisterCheckRequest(BaseModel):
+    field: str = Field(..., min_length=5, max_length=20)
+    value: str = Field(..., min_length=1, max_length=254)
+
+
 def normalize_verify_target(channel: str, target: str) -> str:
     ch = (channel or "").strip().lower()
     if ch == "email":
@@ -1553,6 +1630,34 @@ def normalize_verify_target(channel: str, target: str) -> str:
     if ch == "phone":
         return normalize_phone(target)
     raise HTTPException(status_code=400, detail="不支持的验证类型")
+
+
+@app.post("/api/auth/register/check")
+def check_register_exists(payload: RegisterCheckRequest):
+    field = (payload.field or "").strip().lower()
+    raw_value = (payload.value or "").strip()
+    if field == "username":
+        try:
+            value = validate_username_or_raise(raw_value)
+        except HTTPException as e:
+            return {"field": field, "valid": False, "exists": False, "message": e.detail}
+        exists = get_user_by_username(value) is not None
+        return {"field": field, "valid": True, "exists": exists}
+    if field == "email":
+        try:
+            value = normalize_email(raw_value)
+        except HTTPException as e:
+            return {"field": field, "valid": False, "exists": False, "message": e.detail}
+        exists = get_user_by_email(value) is not None
+        return {"field": field, "valid": True, "exists": exists}
+    if field == "phone":
+        try:
+            value = normalize_phone(raw_value)
+        except HTTPException as e:
+            return {"field": field, "valid": False, "exists": False, "message": e.detail}
+        exists = get_user_by_phone(value) is not None
+        return {"field": field, "valid": True, "exists": exists}
+    raise HTTPException(status_code=400, detail="不支持的检查字段")
 
 
 @app.post("/api/auth/verify/send")
@@ -1598,21 +1703,49 @@ def confirm_verify_code(payload: VerifyConfirmRequest, request: Request):
 @app.post("/api/auth/register")
 def register(payload: RegisterRequest, request: Request):
     verify_captcha_or_raise(payload.captcha_id, payload.captcha_code)
+    require_legal_acceptance_or_raise(payload.accept_terms, payload.accept_privacy)
     username = validate_username_or_raise(payload.username)
     password = validate_password_or_raise(payload.password)
-    email = normalize_email(payload.email)
-    phone = normalize_phone(payload.phone)
-    if not consume_verification_code("email", email, payload.email_code):
-        raise HTTPException(status_code=400, detail="邮箱验证码错误或已过期")
-    if not consume_verification_code("phone", phone, payload.phone_code):
-        raise HTTPException(status_code=400, detail="手机验证码错误或已过期")
+    channel = (payload.register_channel or "").strip().lower()
+    email = None
+    phone = None
+    email_verified = 0
+    phone_verified = 0
+    if get_user_by_username(username):
+        raise HTTPException(status_code=409, detail="用户名已存在")
+    if channel == "email":
+        if not payload.email or not payload.email_code:
+            raise HTTPException(status_code=400, detail="邮箱注册需要填写邮箱与验证码")
+        email = normalize_email(payload.email)
+        if get_user_by_email(email):
+            raise HTTPException(status_code=409, detail="邮箱已存在")
+        if not consume_verification_code("email", email, payload.email_code):
+            raise HTTPException(status_code=400, detail="邮箱验证码错误或已过期")
+        email_verified = 1
+    elif channel == "phone":
+        if not payload.phone or not payload.phone_code:
+            raise HTTPException(status_code=400, detail="手机注册需要填写手机号与验证码")
+        phone = normalize_phone(payload.phone)
+        if get_user_by_phone(phone):
+            raise HTTPException(status_code=409, detail="手机号已存在")
+        if not consume_verification_code("phone", phone, payload.phone_code):
+            raise HTTPException(status_code=400, detail="手机验证码错误或已过期")
+        phone_verified = 1
+    else:
+        raise HTTPException(status_code=400, detail="不支持的注册方式")
 
-    user = create_user(username, password, email=email, phone=phone)
+    user = create_user(username, password, email=email, phone=phone, email_verified=email_verified, phone_verified=phone_verified)
     write_audit_event(
         action="auth.register",
         request=request,
         user=user,
-        detail={"email_masked": mask_email(email), "phone_masked": mask_phone(phone)},
+        detail={
+            "register_channel": channel,
+            "email_masked": mask_email(email) if email else None,
+            "phone_masked": mask_phone(phone) if phone else None,
+            "terms_version": TERMS_VERSION,
+            "privacy_version": PRIVACY_VERSION,
+        },
     )
     access_token = create_access_token(user_id=user["id"], username=user["username"])
     return {
@@ -1629,6 +1762,7 @@ def register(payload: RegisterRequest, request: Request):
 @app.post("/api/auth/login")
 def login(payload: LoginRequest, request: Request):
     verify_captcha_or_raise(payload.captcha_id, payload.captcha_code)
+    require_legal_acceptance_or_raise(payload.accept_terms, payload.accept_privacy)
     password = validate_password_or_raise(payload.password)
     locked, remaining = is_login_locked(payload.identifier)
     if locked:
@@ -1668,11 +1802,16 @@ def login(payload: LoginRequest, request: Request):
         raise
 
     clear_login_failures(payload.identifier)
+    record_legal_acceptance(int(user["id"]))
     write_audit_event(
         action="auth.login",
         request=request,
         user=user,
-        detail={"identifier": (payload.identifier or "").strip()[:120]},
+        detail={
+            "identifier": (payload.identifier or "").strip()[:120],
+            "terms_version": TERMS_VERSION,
+            "privacy_version": PRIVACY_VERSION,
+        },
     )
     access_token = create_access_token(user_id=user["id"], username=user["username"])
     return {
@@ -2347,6 +2486,72 @@ async def index():
 async def register_page():
     with open("static/register.html", "r", encoding="utf-8") as f:
         return f.read()
+
+
+@app.get("/legal/terms", response_class=HTMLResponse)
+def legal_terms():
+    return f"""
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>用户协议</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen p-4 lg:p-6">
+  <div class="max-w-3xl mx-auto bg-white rounded-xl shadow-md overflow-hidden">
+    <div class="p-6 space-y-4">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <div class="uppercase tracking-wide text-sm text-indigo-500 font-semibold mb-1">Legal</div>
+          <h2 class="text-2xl font-bold text-gray-900">用户协议</h2>
+          <p class="text-xs text-gray-500 mt-1">版本：{TERMS_VERSION}</p>
+        </div>
+        <a href="/" class="text-sm px-3 py-1.5 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">返回首页</a>
+      </div>
+      <div class="text-sm text-gray-700 leading-relaxed space-y-3">
+        <p>本页面为示例协议文本占位。上线前请替换为你们正式的《用户协议》内容（含服务范围、免责条款、费用/退款、账号安全、争议解决等）。</p>
+        <p>使用本系统即表示你已阅读、理解并同意本协议的全部条款。</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+"""
+
+
+@app.get("/legal/privacy", response_class=HTMLResponse)
+def legal_privacy():
+    return f"""
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>隐私政策</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen p-4 lg:p-6">
+  <div class="max-w-3xl mx-auto bg-white rounded-xl shadow-md overflow-hidden">
+    <div class="p-6 space-y-4">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <div class="uppercase tracking-wide text-sm text-indigo-500 font-semibold mb-1">Legal</div>
+          <h2 class="text-2xl font-bold text-gray-900">隐私政策</h2>
+          <p class="text-xs text-gray-500 mt-1">版本：{PRIVACY_VERSION}</p>
+        </div>
+        <a href="/" class="text-sm px-3 py-1.5 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">返回首页</a>
+      </div>
+      <div class="text-sm text-gray-700 leading-relaxed space-y-3">
+        <p>本页面为示例隐私政策文本占位。上线前请替换为你们正式的《隐私政策》内容（含收集信息类型、用途、共享/委托处理、保存期限、用户权利、未成年人条款等）。</p>
+        <p>我们会在你同意后处理必要的账号信息用于登录、报价与会员服务。</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+"""
 
 
 @app.get("/admin/users", response_class=HTMLResponse)
