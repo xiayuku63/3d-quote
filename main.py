@@ -14,6 +14,9 @@ import hashlib
 import hmac
 import io
 import uuid
+import smtplib
+import ssl
+from email.message import EmailMessage
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
@@ -58,6 +61,14 @@ if not PAYMENT_WEBHOOK_SECRET:
     if IS_PRODUCTION:
         raise RuntimeError("生产环境必须设置 PAYMENT_WEBHOOK_SECRET")
     PAYMENT_WEBHOOK_SECRET = "dev-only-payment-webhook-secret-change-me"
+
+SMTP_HOST = os.getenv("SMTP_HOST", "").strip()
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER = os.getenv("SMTP_USER", "").strip()
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "").strip()
+SMTP_FROM = os.getenv("SMTP_FROM", "").strip()
+SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "1").strip().lower() in {"1", "true", "yes", "y", "on"}
+SMTP_USE_SSL = os.getenv("SMTP_USE_SSL", "0").strip().lower() in {"1", "true", "yes", "y", "on"}
 
 TERMS_VERSION = os.getenv("TERMS_VERSION", "v1").strip() or "v1"
 PRIVACY_VERSION = os.getenv("PRIVACY_VERSION", "v1").strip() or "v1"
@@ -545,7 +556,7 @@ DEFAULT_MATERIALS = [
     {"name": "ABS", "density": 1.04, "price_per_kg": 250.0, "colors": DEFAULT_COLORS},
     {"name": "Resin", "density": 1.11, "price_per_kg": 800.0, "colors": DEFAULT_COLORS},
 ]
-DEFAULT_UNIT_COST_FORMULA = "(effective_weight_g * (price_per_kg / 1000.0)) + (unit_time_h * machine_hourly_rate_cny) + post_process_fee_per_part_cny"
+DEFAULT_UNIT_COST_FORMULA = "((effective_weight_g * (price_per_kg / 1000.0)) + (unit_time_h * machine_hourly_rate_cny) + post_process_fee_per_part_cny) * difficulty_multiplier"
 DEFAULT_TOTAL_COST_FORMULA = "max((unit_cost_cny * quantity) + setup_fee_cny, min_job_fee_cny)"
 DEFAULT_PRICING_CONFIG = {
     "machine_hourly_rate_cny": 15.0,
@@ -554,6 +565,9 @@ DEFAULT_PRICING_CONFIG = {
     "material_waste_percent": 5.0,
     "support_percent_of_model": 0.0,
     "post_process_fee_per_part_cny": 0.0,
+    "difficulty_coefficient": 0.25,
+    "difficulty_ratio_low": 0.8,
+    "difficulty_ratio_high": 4.0,
     "time_overhead_min": 5.0,
     "time_vol_min_per_cm3": 0.8,
     "time_area_min_per_cm2": 0.0,
@@ -842,18 +856,79 @@ def get_user_by_id(user_id: int):
     return row
 
 
-def create_verification_code(channel: str, target: str) -> str:
+def create_verification_code(channel: str, target: str) -> tuple[str, int]:
     code = generate_numeric_code(6)
     now = time.time()
     expires_at = now + VERIFY_CODE_TTL_SECONDS
     created_at = datetime.now(timezone.utc).isoformat()
     with get_db_conn() as conn:
-        conn.execute(
+        cur = conn.execute(
             "INSERT INTO verification_codes (channel, target, code_hash, expires_at, created_at, used_at, attempts) VALUES (?, ?, ?, ?, ?, NULL, 0)",
             (channel, target, hash_verify_code(code), str(expires_at), created_at),
         )
         conn.commit()
-    return code
+        row_id = int(cur.lastrowid or 0)
+    return code, row_id
+
+
+def delete_verification_code_row(row_id: int) -> None:
+    rid = int(row_id or 0)
+    if rid <= 0:
+        return
+    with get_db_conn() as conn:
+        conn.execute("DELETE FROM verification_codes WHERE id = ?", (rid,))
+        conn.commit()
+
+
+def is_smtp_configured() -> bool:
+    if not SMTP_HOST:
+        return False
+    if SMTP_USE_SSL and SMTP_PORT <= 0:
+        return False
+    if SMTP_USE_TLS and SMTP_PORT <= 0:
+        return False
+    return True
+
+
+def send_email_verification_code(to_email: str, code: str) -> None:
+    if not is_smtp_configured():
+        raise RuntimeError("SMTP 未配置")
+    from_addr = (SMTP_FROM or SMTP_USER or "").strip()
+    if not from_addr:
+        raise RuntimeError("SMTP_FROM 未配置")
+    msg = EmailMessage()
+    msg["Subject"] = "邮箱验证码 - 3D打印自动报价系统"
+    msg["From"] = from_addr
+    msg["To"] = to_email
+    msg.set_content(
+        "\n".join(
+            [
+                "您正在注册 3D打印自动报价系统。",
+                f"本次邮箱验证码：{code}",
+                f"有效期：{int(VERIFY_CODE_TTL_SECONDS)} 秒",
+                "",
+                "如非本人操作，请忽略本邮件。",
+            ]
+        )
+    )
+    timeout_s = float(os.getenv("SMTP_TIMEOUT_SECONDS", "10") or "10")
+    if SMTP_USE_SSL:
+        context = ssl.create_default_context()
+        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=timeout_s, context=context) as server:
+            if SMTP_USER and SMTP_PASSWORD:
+                server.login(SMTP_USER, SMTP_PASSWORD)
+            server.send_message(msg)
+        return
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=timeout_s) as server:
+        server.ehlo()
+        if SMTP_USE_TLS:
+            context = ssl.create_default_context()
+            server.starttls(context=context)
+            server.ehlo()
+        if SMTP_USER and SMTP_PASSWORD:
+            server.login(SMTP_USER, SMTP_PASSWORD)
+        server.send_message(msg)
+    return
 
 
 def consume_verification_code(channel: str, target: str, code: str) -> bool:
@@ -1356,6 +1431,11 @@ FORMULA_ALIAS_TO_CANONICAL = {
     "最低起步价": "min_job_fee_cny",
     "单件成本": "unit_cost_cny",
     "小计": "subtotal_cny",
+    "难度系数": "difficulty_coefficient",
+    "表面积体积比": "surface_area_to_volume_ratio",
+    "难度得分": "difficulty_score",
+    "难度倍率": "difficulty_multiplier",
+    "难度加价百分比": "difficulty_markup_percent",
 }
 
 FORMULA_CANONICAL_VARS = {
@@ -1366,6 +1446,11 @@ FORMULA_CANONICAL_VARS = {
     "unit_time_h",
     "machine_hourly_rate_cny",
     "post_process_fee_per_part_cny",
+    "difficulty_coefficient",
+    "surface_area_to_volume_ratio",
+    "difficulty_score",
+    "difficulty_multiplier",
+    "difficulty_markup_percent",
     "quantity",
     "setup_fee_cny",
     "min_job_fee_cny",
@@ -1462,6 +1547,25 @@ def calculate_cost(volume_mm3, surface_area_mm2, material, layer_height_mm, infi
 
     base_unit_cost = material_cost + machine_cost + post_per_part
 
+    volume_cm3 = float(volume_mm3) / 1000.0
+    surface_area_cm2 = float(surface_area_mm2) / 100.0
+    surface_area_to_volume_ratio = 0.0
+    if volume_cm3 > 0:
+        surface_area_to_volume_ratio = surface_area_cm2 / max(volume_cm3, 1e-9)
+    ratio_low = float(cfg.get("difficulty_ratio_low") or 0.0)
+    ratio_high = float(cfg.get("difficulty_ratio_high") or 0.0)
+    difficulty_score = 0.0
+    if ratio_high > ratio_low:
+        difficulty_score = (surface_area_to_volume_ratio - ratio_low) / (ratio_high - ratio_low)
+    difficulty_score = max(0.0, min(1.0, float(difficulty_score)))
+    difficulty_coefficient = float(cfg.get("difficulty_coefficient") or 0.0)
+    if difficulty_coefficient < 0:
+        difficulty_coefficient = 0.0
+    if difficulty_coefficient > 3:
+        difficulty_coefficient = 3.0
+    difficulty_multiplier = 1.0 + (difficulty_coefficient * difficulty_score)
+    difficulty_markup_percent = max(0.0, (difficulty_multiplier - 1.0) * 100.0)
+
     variables = {
         "effective_weight_g": float(effective_weight_g),
         "model_weight_g": float(model_weight_g),
@@ -1470,6 +1574,11 @@ def calculate_cost(volume_mm3, surface_area_mm2, material, layer_height_mm, infi
         "unit_time_h": float(unit_time_h),
         "machine_hourly_rate_cny": float(machine_hourly_rate),
         "post_process_fee_per_part_cny": float(post_per_part),
+        "difficulty_coefficient": float(difficulty_coefficient),
+        "surface_area_to_volume_ratio": float(surface_area_to_volume_ratio),
+        "difficulty_score": float(difficulty_score),
+        "difficulty_multiplier": float(difficulty_multiplier),
+        "difficulty_markup_percent": float(difficulty_markup_percent),
         "quantity": float(quantity),
         "setup_fee_cny": float(setup_fee),
         "min_job_fee_cny": float(min_job_fee),
@@ -1479,8 +1588,8 @@ def calculate_cost(volume_mm3, surface_area_mm2, material, layer_height_mm, infi
         "machine_cost_cny": float(machine_cost),
         "volume_mm3": float(volume_mm3),
         "surface_area_mm2": float(surface_area_mm2),
-        "volume_cm3": float(volume_mm3) / 1000.0,
-        "surface_area_cm2": float(surface_area_mm2) / 100.0,
+        "volume_cm3": float(volume_cm3),
+        "surface_area_cm2": float(surface_area_cm2),
     }
 
     unit_formula = str(cfg.get("unit_cost_formula") or DEFAULT_UNIT_COST_FORMULA).strip()
@@ -1488,7 +1597,9 @@ def calculate_cost(volume_mm3, surface_area_mm2, material, layer_height_mm, infi
 
     unit_cost = safe_eval_formula(unit_formula, variables)
     if unit_cost is None or unit_cost < 0:
-        unit_cost = base_unit_cost
+        unit_cost = base_unit_cost * float(difficulty_multiplier)
+
+    unit_cost_before_difficulty = float(unit_cost) / float(difficulty_multiplier) if float(difficulty_multiplier) > 0 else float(unit_cost)
 
     subtotal = (unit_cost * quantity) + setup_fee
     variables["unit_cost_cny"] = float(unit_cost)
@@ -1504,6 +1615,12 @@ def calculate_cost(volume_mm3, surface_area_mm2, material, layer_height_mm, infi
         "material_cost_cny": round(material_cost, 2),
         "machine_cost_cny": round(machine_cost, 2),
         "post_process_cost_per_part_cny": round(post_per_part, 2),
+        "difficulty_surface_area_to_volume_ratio": round(surface_area_to_volume_ratio, 6),
+        "difficulty_score": round(difficulty_score, 4),
+        "difficulty_coefficient": round(difficulty_coefficient, 4),
+        "difficulty_multiplier": round(difficulty_multiplier, 6),
+        "difficulty_markup_percent": round(max(0.0, (difficulty_multiplier - 1.0) * 100.0), 2),
+        "unit_cost_before_difficulty_cny": round(unit_cost_before_difficulty, 2),
         "setup_fee_cny": round(setup_fee, 2),
         "min_job_fee_cny": round(min_job_fee, 2),
         "subtotal_cny": round(subtotal, 2),
@@ -1566,6 +1683,10 @@ async def process_single_file(
             "status": "success",
             "volume_cm3": round(volume / 1000, 2),
             "surface_area_cm2": round(surface_area / 100, 2),
+            "surface_area_to_volume_ratio": round(float((breakdown or {}).get("difficulty_surface_area_to_volume_ratio") or 0.0), 6),
+            "difficulty_score": round(float((breakdown or {}).get("difficulty_score") or 0.0), 4),
+            "difficulty_multiplier": round(float((breakdown or {}).get("difficulty_multiplier") or 1.0), 6),
+            "difficulty_markup_percent": round(float((breakdown or {}).get("difficulty_markup_percent") or 0.0), 2),
             "dimensions": dimensions_str,
             "weight_g": total_weight,
             "estimated_time_h": total_print_time_h,
@@ -1669,7 +1790,17 @@ def send_verify_code(payload: VerifySendRequest, request: Request):
         raise HTTPException(status_code=429, detail="请求过于频繁，请稍后再试")
     if not rate_limiter.is_allowed(f"verify_send_target_cooldown:{channel}:{target}", 1, window_seconds=VERIFY_SEND_COOLDOWN_SECONDS):
         raise HTTPException(status_code=429, detail="请求过于频繁，请稍后再试")
-    code = create_verification_code(channel=channel, target=target)
+    code, row_id = create_verification_code(channel=channel, target=target)
+    if channel == "email":
+        if IS_PRODUCTION and not is_smtp_configured():
+            delete_verification_code_row(row_id)
+            raise HTTPException(status_code=500, detail="邮件服务未配置，暂无法发送邮箱验证码")
+        try:
+            if is_smtp_configured():
+                send_email_verification_code(target, code)
+        except Exception:
+            delete_verification_code_row(row_id)
+            raise HTTPException(status_code=500, detail="邮箱验证码发送失败，请稍后重试")
     resp = {"status": "sent", "channel": channel, "target": target, "expires_in": VERIFY_CODE_TTL_SECONDS}
     if not IS_PRODUCTION:
         resp["dev_code"] = code
@@ -1838,6 +1969,9 @@ class PricingConfig(BaseModel):
     material_waste_percent: float = 5.0
     support_percent_of_model: float = 0.0
     post_process_fee_per_part_cny: float = 0.0
+    difficulty_coefficient: float = 0.25
+    difficulty_ratio_low: float = 0.8
+    difficulty_ratio_high: float = 4.0
     time_overhead_min: float = 5.0
     time_vol_min_per_cm3: float = 0.8
     time_area_min_per_cm2: float = 0.0
