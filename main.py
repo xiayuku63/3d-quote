@@ -1687,7 +1687,11 @@ def run_prusaslicer_slice(
     loads.extend(_env_csv("PRUSASLICER_LOAD_FILES"))
     if extra_loads:
         loads.extend([x for x in extra_loads if x])
-    cmd = [exe, "--export-gcode", "--output", output_gcode_path]
+    cmd = []
+    # 如果是 Linux 环境且未配置 DISPLAY，则使用 xvfb-run 避免缺少 X11 的报错
+    if os.name == "posix" and not os.environ.get("DISPLAY"):
+        cmd.extend(["xvfb-run", "-a"])
+    cmd.extend([exe, "--export-gcode", "--output", output_gcode_path])
     for cfg in loads:
         if os.path.exists(cfg):
             cmd.extend(["--load", cfg])
@@ -2003,6 +2007,7 @@ def calculate_cost(
     model_path: Optional[str] = None,
     slicer_preset: Optional[dict] = None,
     perimeters: Optional[int] = None,
+    current_user: Optional[dict] = None,
 ):
     materials = normalize_materials(user_materials)
     spec = next((m for m in materials if m["name"] == material), None) or DEFAULT_MATERIALS[0]
@@ -2054,10 +2059,12 @@ def calculate_cost(
     slicer_time_s = None
     slicer_filament_g_per_part = None
     preset_used = None
+    prusaslicer_error_msg = None
     if use_prusaslicer and model_path and os.path.exists(model_path):
         preset_tmp_path = None
         try:
-            outputs_job_dir = os.path.join(_outputs_base_dir(), _date_folder_utc(), uuid.uuid4().hex)
+            user_folder = f"user_{current_user['id']}_{current_user['username']}" if current_user else "anonymous"
+            outputs_job_dir = os.path.join(_outputs_base_dir(), user_folder, _date_folder_utc(), uuid.uuid4().hex)
             os.makedirs(outputs_job_dir, exist_ok=True)
             base_name = os.path.splitext(os.path.basename(model_path))[0]
             output_prefix = _sanitize_filename_component(base_name, fallback="model", max_len=60)
@@ -2099,11 +2106,13 @@ def calculate_cost(
                         slicer_filament_g_per_part = float(st.get("filament_g") or 0.0)
                     except Exception:
                         slicer_filament_g_per_part = None
-        except Exception:
+        except Exception as e:
+            logger.error(f"PrusaSlicer failed for {model_path}: {e}")
             support_weight_g_per_part = 0.0
             slicer_time_s = None
             slicer_filament_g_per_part = None
             preset_used = None
+            prusaslicer_error_msg = str(e)
         finally:
             try:
                 if preset_tmp_path and os.path.exists(preset_tmp_path):
@@ -2188,6 +2197,7 @@ def calculate_cost(
         "support_price_per_g": round(support_price_per_g, 4),
         "support_cost_per_part_cny": round(support_cost_per_part_cny, 2),
         "prusaslicer_used": bool(use_prusaslicer and slicer_time_s is not None),
+        "prusaslicer_error": prusaslicer_error_msg,
         "prusaslicer_filament_g_per_part": round(float(slicer_filament_g_per_part), 3) if slicer_filament_g_per_part is not None else None,
         "prusaslicer_preset_used": preset_used,
         "prusaslicer_sets": _prusaslicer_sets_from_quote_params(layer_height_mm, infill_percent, perimeters) if use_prusaslicer else {},
@@ -2213,6 +2223,7 @@ async def process_single_file(
     pricing_config: dict,
     slicer_preset: Optional[dict] = None,
     perimeters: Optional[int] = None,
+    current_user: Optional[dict] = None,
 ):
     filename = file.filename or "unnamed_file"
     _, ext = os.path.splitext(filename.lower())
@@ -2236,8 +2247,11 @@ async def process_single_file(
         original_stem = os.path.splitext(safe_original)[0]
         safe_stem = _sanitize_filename_component(original_stem, fallback="model", max_len=80)
         job_id = uuid.uuid4().hex
-        uploads_day_dir = os.path.join(_uploads_base_dir(), _date_folder_utc())
+        
+        user_folder = f"user_{current_user['id']}_{current_user['username']}" if current_user else "anonymous"
+        uploads_day_dir = os.path.join(_uploads_base_dir(), user_folder, _date_folder_utc())
         os.makedirs(uploads_day_dir, exist_ok=True)
+        
         saved_name = f"{job_id}_{safe_stem}{ext}"
         model_saved_path = os.path.join(uploads_day_dir, saved_name)
         with open(model_saved_path, "wb") as f:
@@ -2263,6 +2277,7 @@ async def process_single_file(
             model_path=model_saved_path,
             slicer_preset=slicer_preset,
             perimeters=perimeters,
+            current_user=current_user,
         )
         total_weight = round(model_weight_g * quantity, 2)
         try:
@@ -3265,6 +3280,7 @@ async def get_quote(
             pricing_config,
             slicer_preset=slicer_preset,
             perimeters=wall_count,
+            current_user=current_user,
         )
         results.append(result)
 
