@@ -203,6 +203,9 @@ def _outputs_base_dir() -> str:
     return _ensure_dir(OUTPUTS_DIR)
 
 
+def _configs_base_dir() -> str:
+    return _ensure_dir(os.getenv("CONFIGS_DIR", "configs").strip() or "configs")
+
 class InMemoryMetrics:
     def __init__(self):
         self._lock = threading.Lock()
@@ -2699,6 +2702,17 @@ async def api_upsert_slicer_preset(
     raw = await file.read()
     inferred_name = os.path.splitext(os.path.basename(filename))[0].strip()
     preset_name = (name or "").strip() or inferred_name or "preset"
+    
+    # 将配置持久化到用户的 configs 目录下
+    user_folder = f"user_{current_user['id']}_{current_user['username']}"
+    # 结构: configs/user_1_admin/xxx.ini
+    user_configs_dir = os.path.join(_configs_base_dir(), user_folder)
+    os.makedirs(user_configs_dir, exist_ok=True)
+    safe_preset_name = _sanitize_filename_component(preset_name, fallback="preset", max_len=60)
+    config_saved_path = os.path.join(user_configs_dir, f"{safe_preset_name}{ext}")
+    with open(config_saved_path, "wb") as f:
+        f.write(raw)
+        
     saved = upsert_slicer_preset(int(current_user["id"]), preset_name, ext, raw)
     write_audit_event(
         action="slicer.preset.upsert",
