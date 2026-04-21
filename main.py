@@ -17,6 +17,7 @@ import uuid
 import smtplib
 import ssl
 from email.message import EmailMessage
+import subprocess
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
@@ -104,6 +105,8 @@ app.add_middleware(
 SUPPORTED_EXTENSIONS = {".stl", ".stp", ".step", ".obj", ".3mf"}
 MAX_FILES_PER_REQUEST = 20
 MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024
+UPLOADS_DIR = os.getenv("UPLOADS_DIR", "uploads").strip() or "uploads"
+OUTPUTS_DIR = os.getenv("OUTPUTS_DIR", "outputs").strip() or "outputs"
 DB_PATH = "app.db"
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_HOURS = 24
@@ -155,6 +158,49 @@ class SimpleRateLimiter:
 
 
 rate_limiter = SimpleRateLimiter()
+
+
+FILENAME_DISALLOWED_CHARS = set('\\/:*?"<>|')
+
+
+def _sanitize_filename_component(value: str, fallback: str, max_len: int = 120) -> str:
+    raw = (value or "").strip()
+    if not raw:
+        return fallback
+    out_chars: list[str] = []
+    for ch in raw:
+        code = ord(ch)
+        if code < 32 or code == 127:
+            out_chars.append("_")
+            continue
+        if ch in FILENAME_DISALLOWED_CHARS:
+            out_chars.append("_")
+            continue
+        out_chars.append(ch)
+    cleaned = re.sub(r"\s+", " ", "".join(out_chars)).strip()
+    if not cleaned:
+        cleaned = fallback
+    if len(cleaned) > max_len:
+        cleaned = cleaned[:max_len].rstrip()
+    return cleaned or fallback
+
+
+def _ensure_dir(path: str) -> str:
+    p = str(path or "").strip() or "."
+    os.makedirs(p, exist_ok=True)
+    return p
+
+
+def _date_folder_utc() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%d")
+
+
+def _uploads_base_dir() -> str:
+    return _ensure_dir(UPLOADS_DIR)
+
+
+def _outputs_base_dir() -> str:
+    return _ensure_dir(OUTPUTS_DIR)
 
 
 class InMemoryMetrics:
@@ -556,7 +602,7 @@ DEFAULT_MATERIALS = [
     {"name": "ABS", "density": 1.04, "price_per_kg": 250.0, "colors": DEFAULT_COLORS},
     {"name": "Resin", "density": 1.11, "price_per_kg": 800.0, "colors": DEFAULT_COLORS},
 ]
-DEFAULT_UNIT_COST_FORMULA = "((effective_weight_g * (price_per_kg / 1000.0)) + (unit_time_h * machine_hourly_rate_cny) + post_process_fee_per_part_cny) * difficulty_multiplier"
+DEFAULT_UNIT_COST_FORMULA = "((effective_weight_g * (price_per_kg / 1000.0)) + (unit_time_h * machine_hourly_rate_cny) + post_process_fee_per_part_cny) * difficulty_multiplier + support_cost_per_part_cny"
 DEFAULT_TOTAL_COST_FORMULA = "max((unit_cost_cny * quantity) + setup_fee_cny, min_job_fee_cny)"
 DEFAULT_PRICING_CONFIG = {
     "machine_hourly_rate_cny": 15.0,
@@ -568,6 +614,9 @@ DEFAULT_PRICING_CONFIG = {
     "difficulty_coefficient": 0.25,
     "difficulty_ratio_low": 0.8,
     "difficulty_ratio_high": 4.0,
+    "use_prusaslicer": 0,
+    "prusaslicer_support_mode": "diff",
+    "support_price_per_g": 0.0,
     "time_overhead_min": 5.0,
     "time_vol_min_per_cm3": 0.8,
     "time_area_min_per_cm2": 0.0,
@@ -578,6 +627,7 @@ DEFAULT_PRICING_CONFIG = {
     "unit_cost_formula": DEFAULT_UNIT_COST_FORMULA,
     "total_cost_formula": DEFAULT_TOTAL_COST_FORMULA,
 }
+APP_DEFAULTS_KEY = "global_defaults_v1"
 
 
 def normalize_materials(raw_materials, fallback_colors: Optional[List[str]] = None):
@@ -613,6 +663,31 @@ def init_db() -> None:
                 username TEXT NOT NULL UNIQUE,
                 password_hash TEXT NOT NULL,
                 created_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS slicer_presets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                ext TEXT NOT NULL,
+                content_b64 TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(user_id, name)
+            )
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_slicer_presets_user_id ON slicer_presets (user_id)")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS app_defaults (
+                key TEXT PRIMARY KEY,
+                value_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                updated_by INTEGER,
+                updated_by_username TEXT
             )
             """
         )
@@ -981,9 +1056,10 @@ def create_user(username: str, password: str, email: Optional[str], phone: Optio
 
     password_hash = get_password_hash(password)
     created_at = datetime.now(timezone.utc).isoformat()
-    materials_json = json.dumps(DEFAULT_MATERIALS)
-    colors_json = json.dumps(DEFAULT_COLORS)
-    pricing_json = json.dumps(DEFAULT_PRICING_CONFIG)
+    defaults = get_app_defaults()
+    materials_json = json.dumps(defaults.get("materials") or DEFAULT_MATERIALS)
+    colors_json = json.dumps(defaults.get("colors") or DEFAULT_COLORS)
+    pricing_json = json.dumps(defaults.get("pricing_config") or DEFAULT_PRICING_CONFIG)
     membership_level = "free"
     membership_expires_at = None
     accepted_at = datetime.now(timezone.utc).isoformat()
@@ -1022,6 +1098,159 @@ def create_user(username: str, password: str, email: Optional[str], phone: Optio
 
     user = get_user_by_username(username)
     return user
+
+
+SLICER_PRESET_NAME_MAX_LEN = 60
+SLICER_PRESET_NAME_DISALLOWED_CHARS = set('\\/:*?"<>|')
+
+
+def _normalize_slicer_preset_name(name: str) -> str:
+    raw = (name or "").strip()
+    if not raw:
+        return "preset"
+    normalized_chars: list[str] = []
+    for ch in raw:
+        code = ord(ch)
+        if code < 32 or code == 127:
+            normalized_chars.append("_")
+            continue
+        if ch in SLICER_PRESET_NAME_DISALLOWED_CHARS:
+            normalized_chars.append("_")
+            continue
+        normalized_chars.append(ch)
+    cleaned = re.sub(r"\s+", " ", "".join(normalized_chars)).strip()
+    if not cleaned:
+        cleaned = "preset"
+    if len(cleaned) > SLICER_PRESET_NAME_MAX_LEN:
+        cleaned = cleaned[:SLICER_PRESET_NAME_MAX_LEN].rstrip()
+        if not cleaned:
+            cleaned = "preset"
+    return cleaned
+
+
+def list_slicer_presets(user_id: int) -> list[dict]:
+    uid = int(user_id or 0)
+    if uid <= 0:
+        return []
+    with get_db_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, name, ext, created_at FROM slicer_presets WHERE user_id = ? ORDER BY id DESC",
+            (uid,),
+        ).fetchall()
+    out = []
+    for r in rows or []:
+        out.append(
+            {
+                "id": int(r["id"]),
+                "name": str(r["name"] or ""),
+                "ext": str(r["ext"] or ""),
+                "created_at": str(r["created_at"] or ""),
+            }
+        )
+    return out
+
+
+def get_slicer_preset_by_id(user_id: int, preset_id: int) -> Optional[dict]:
+    uid = int(user_id or 0)
+    pid = int(preset_id or 0)
+    if uid <= 0 or pid <= 0:
+        return None
+    with get_db_conn() as conn:
+        row = conn.execute(
+            "SELECT id, name, ext, content_b64, created_at FROM slicer_presets WHERE id = ? AND user_id = ?",
+            (pid, uid),
+        ).fetchone()
+    if not row:
+        return None
+    try:
+        content = base64.b64decode(str(row["content_b64"] or "").encode("ascii"), validate=False)
+    except Exception:
+        content = b""
+    return {
+        "id": int(row["id"]),
+        "name": str(row["name"] or ""),
+        "ext": str(row["ext"] or ""),
+        "content": bytes(content),
+        "created_at": str(row["created_at"] or ""),
+    }
+
+
+def upsert_slicer_preset(user_id: int, name: str, ext: str, content: bytes) -> dict:
+    uid = int(user_id or 0)
+    if uid <= 0:
+        raise HTTPException(status_code=401, detail="未登录")
+    preset_name = _normalize_slicer_preset_name(name)
+    safe_ext = (ext or "").strip().lower()
+    if safe_ext not in {".ini", ".cfg"}:
+        raise HTTPException(status_code=400, detail="预设文件格式不支持（仅支持 .ini/.cfg）")
+    raw = bytes(content or b"")
+    if not raw or len(raw) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="预设文件内容不能为空且必须小于 2MB")
+    created_at = datetime.now(timezone.utc).isoformat()
+    b64 = base64.b64encode(raw).decode("ascii")
+    with get_db_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO slicer_presets (user_id, name, ext, content_b64, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, name) DO UPDATE SET
+                ext = excluded.ext,
+                content_b64 = excluded.content_b64,
+                created_at = excluded.created_at
+            """,
+            (uid, preset_name, safe_ext, b64, created_at),
+        )
+        row = conn.execute(
+            "SELECT id, name, ext, created_at FROM slicer_presets WHERE user_id = ? AND name = ?",
+            (uid, preset_name),
+        ).fetchone()
+        conn.commit()
+    if not row:
+        raise HTTPException(status_code=500, detail="预设保存失败")
+    return {"id": int(row["id"]), "name": str(row["name"]), "ext": str(row["ext"]), "created_at": str(row["created_at"])}
+
+
+def delete_slicer_preset(user_id: int, preset_id: int) -> bool:
+    uid = int(user_id or 0)
+    pid = int(preset_id or 0)
+    if uid <= 0 or pid <= 0:
+        return False
+    with get_db_conn() as conn:
+        cur = conn.execute("DELETE FROM slicer_presets WHERE id = ? AND user_id = ?", (pid, uid))
+        conn.commit()
+        return int(cur.rowcount or 0) > 0
+
+
+def get_app_defaults() -> dict:
+    fallback = {
+        "materials": list(DEFAULT_MATERIALS),
+        "colors": list(DEFAULT_COLORS),
+        "pricing_config": merge_pricing_config(DEFAULT_PRICING_CONFIG),
+    }
+    with get_db_conn() as conn:
+        row = conn.execute("SELECT value_json FROM app_defaults WHERE key = ?", (APP_DEFAULTS_KEY,)).fetchone()
+    if not row or not row["value_json"]:
+        return fallback
+    try:
+        raw = json.loads(row["value_json"])
+    except Exception:
+        return fallback
+    if not isinstance(raw, dict):
+        return fallback
+    raw_materials = raw.get("materials")
+    raw_colors = raw.get("colors")
+    raw_pricing = raw.get("pricing_config")
+    colors = []
+    if isinstance(raw_colors, list):
+        colors = [str(c).strip() for c in raw_colors if str(c).strip()]
+    materials = normalize_materials(raw_materials, fallback_colors=(colors or DEFAULT_COLORS)) if isinstance(raw_materials, list) else DEFAULT_MATERIALS
+    derived_colors = []
+    for m in materials:
+        for c in m.get("colors", []):
+            if c not in derived_colors:
+                derived_colors.append(c)
+    pricing = merge_pricing_config(raw_pricing) if isinstance(raw_pricing, dict) else merge_pricing_config(DEFAULT_PRICING_CONFIG)
+    return {"materials": materials, "colors": derived_colors or (colors or list(DEFAULT_COLORS)), "pricing_config": pricing}
 
 
 def authenticate_user(identifier: str, password: str):
@@ -1334,6 +1563,212 @@ def calculate_geometry(model_path):
         print(f"Error reading model with trimesh: {e}")
         return 0, 0, {"x": 0, "y": 0, "z": 0}
 
+
+def _env_csv(name: str) -> list[str]:
+    raw = os.getenv(name, "")
+    if not raw:
+        return []
+    parts = []
+    for token in raw.replace(";", ",").split(","):
+        t = token.strip().strip('"').strip("'")
+        if t:
+            parts.append(t)
+    return parts
+
+
+def _parse_hms_to_seconds(text: str) -> Optional[int]:
+    raw = (text or "").strip().lower()
+    if not raw:
+        return None
+    m = re.search(r"(?:(\d+)\s*d\s*)?(?:(\d+)\s*h\s*)?(?:(\d+)\s*m\s*)?(?:(\d+)\s*s\s*)?$", raw)
+    if not m:
+        return None
+    days = int(m.group(1) or 0)
+    hours = int(m.group(2) or 0)
+    mins = int(m.group(3) or 0)
+    secs = int(m.group(4) or 0)
+    total = days * 86400 + hours * 3600 + mins * 60 + secs
+    if total <= 0:
+        return None
+    return total
+
+
+def parse_prusaslicer_gcode_stats(gcode_path: str) -> dict:
+    out = {"estimated_time_s": None, "filament_g": None, "filament_mm": None}
+    try:
+        import os
+        with open(gcode_path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            filesize = f.tell()
+            chunk_size = min(65536, filesize)
+            f.seek(-chunk_size, os.SEEK_END)
+            chunk = f.read().decode('utf-8', errors='ignore')
+            lines = chunk.splitlines()
+    except Exception:
+        return out
+
+    for line in lines:
+        s = line.strip()
+        if not s.startswith(";"):
+            continue
+        m = re.search(r"filament used\s*\[g\]\s*=\s*([0-9]+(?:\.[0-9]+)?)", s, flags=re.I)
+        if m and out["filament_g"] is None:
+            try:
+                out["filament_g"] = float(m.group(1))
+            except Exception:
+                pass
+        m = re.search(r"filament used\s*\[mm\]\s*=\s*([0-9]+(?:\.[0-9]+)?)", s, flags=re.I)
+        if m and out["filament_mm"] is None:
+            try:
+                out["filament_mm"] = float(m.group(1))
+            except Exception:
+                pass
+        m = re.search(r"estimated printing time.*=\s*(.+)$", s, flags=re.I)
+        if m and out["estimated_time_s"] is None:
+            sec = _parse_hms_to_seconds(m.group(1))
+            if sec is not None:
+                out["estimated_time_s"] = int(sec)
+
+    if out["estimated_time_s"] is None:
+        for line in lines:
+            s = line.strip()
+            if not s.startswith(";"):
+                continue
+            m = re.search(r"\bTIME\s*:\s*([0-9]+)\b", s, flags=re.I)
+            if m:
+                try:
+                    out["estimated_time_s"] = int(m.group(1))
+                    break
+                except Exception:
+                    pass
+    return out
+
+
+def prusaslicer_executable() -> Optional[str]:
+    candidates = []
+    env_path = os.getenv("PRUSASLICER_PATH", "").strip()
+    if env_path:
+        candidates.append(env_path)
+    candidates.extend(_env_csv("PRUSASLICER_PATH_CANDIDATES"))
+    
+    # 兼容 Windows 本地开发时可能通过默认路径安装的 PrusaSlicer
+    windir = os.environ.get("ProgramFiles", "C:\\Program Files")
+    windir_x86 = os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)")
+    candidates.extend(
+        [
+            os.path.join(windir, "Prusa3D", "PrusaSlicer", "prusa-slicer-console.exe"),
+            os.path.join(windir, "Prusa3D", "PrusaSlicer", "prusa-slicer.exe"),
+            os.path.join(windir_x86, "Prusa3D", "PrusaSlicer", "prusa-slicer-console.exe"),
+            os.path.join(windir_x86, "Prusa3D", "PrusaSlicer", "prusa-slicer.exe"),
+        ]
+    )
+    for p in candidates:
+        try:
+            if p and os.path.exists(p):
+                return p
+        except Exception:
+            continue
+    return None
+
+
+def run_prusaslicer_slice(
+    model_path: str,
+    output_gcode_path: str,
+    extra_loads: Optional[list[str]] = None,
+    extra_sets: Optional[dict[str, str]] = None,
+) -> dict:
+    exe = prusaslicer_executable()
+    if not exe:
+        raise RuntimeError("未配置 PRUSASLICER_PATH")
+    out_dir = os.path.dirname(str(output_gcode_path or "").strip())
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+    loads = []
+    loads.extend(_env_csv("PRUSASLICER_LOAD_FILES"))
+    if extra_loads:
+        loads.extend([x for x in extra_loads if x])
+    cmd = [exe, "--export-gcode", "--output", output_gcode_path]
+    for cfg in loads:
+        if os.path.exists(cfg):
+            cmd.extend(["--load", cfg])
+    if extra_sets:
+        for k, v in extra_sets.items():
+            if str(k).startswith("--"):
+                flag = k
+            else:
+                flag = f"--{k.replace('_', '-')}"
+            if v == "":
+                cmd.append(flag)
+            else:
+                cmd.append(f"{flag}={v}")
+    cmd.append(model_path)
+    timeout_s = float(os.getenv("PRUSASLICER_TIMEOUT_SECONDS", "90") or "90")
+    res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
+    if res.returncode != 0:
+        err = (res.stderr or res.stdout or "").strip()
+        raise RuntimeError(f"PrusaSlicer 切片失败：{err[:300]}")
+    stats = parse_prusaslicer_gcode_stats(output_gcode_path)
+    return stats
+
+
+def prusaslicer_support_diff_stats(
+    model_path: str,
+    extra_loads: Optional[list[str]] = None,
+    extra_sets: Optional[dict[str, str]] = None,
+    output_dir: Optional[str] = None,
+    output_prefix: str = "",
+) -> dict:
+    base_dir = str(output_dir or "").strip()
+    if not base_dir:
+        base_dir = os.path.join(_outputs_base_dir(), _date_folder_utc(), uuid.uuid4().hex)
+    os.makedirs(base_dir, exist_ok=True)
+    prefix = _sanitize_filename_component(output_prefix, fallback="", max_len=50)
+    if prefix and not prefix.endswith("_"):
+        prefix = prefix + "_"
+    g_on = os.path.join(base_dir, f"{prefix}with_support.gcode")
+    g_off = os.path.join(base_dir, f"{prefix}no_support.gcode")
+    load_on = _env_csv("PRUSASLICER_LOAD_FILES_SUPPORT_ON")
+    load_off = _env_csv("PRUSASLICER_LOAD_FILES_SUPPORT_OFF")
+    if load_on and load_off:
+        st_on = run_prusaslicer_slice(model_path, g_on, extra_loads=(list(load_on) + list(extra_loads or [])), extra_sets=dict(extra_sets or {}))
+        st_off = run_prusaslicer_slice(model_path, g_off, extra_loads=(list(load_off) + list(extra_loads or [])), extra_sets=dict(extra_sets or {}))
+    else:
+        base_sets = dict(extra_sets or {})
+        st_on = run_prusaslicer_slice(
+            model_path,
+            g_on,
+            extra_loads=extra_loads,
+            extra_sets={**base_sets, "--support-material": "1", "--support-material-auto": "1"},
+        )
+        st_off = run_prusaslicer_slice(
+            model_path,
+            g_off,
+            extra_loads=extra_loads,
+            extra_sets={**base_sets, "--support-material": "0", "--support-material-auto": "0"},
+        )
+    out = {"with_support": st_on, "no_support": st_off}
+    out["output_dir"] = base_dir
+    out["gcode_with_support"] = g_on
+    out["gcode_no_support"] = g_off
+    try:
+        g_on_val = float(st_on.get("filament_g") or 0.0)
+    except Exception:
+        g_on_val = 0.0
+    try:
+        g_off_val = float(st_off.get("filament_g") or 0.0)
+    except Exception:
+        g_off_val = 0.0
+    support_g = max(0.0, g_on_val - g_off_val)
+    out["support_g"] = round(support_g, 3)
+    if st_on.get("filament_g") is not None:
+        try:
+            out["filament_g"] = float(st_on.get("filament_g") or 0.0)
+        except Exception:
+            out["filament_g"] = None
+    if st_on.get("estimated_time_s") is not None:
+        out["estimated_time_s"] = int(st_on["estimated_time_s"])
+    return out
+
 def calculate_weight(volume, material_density):
     """Calculate weight (unit: g)"""
     return volume * material_density / 1000  # mm³ -> cm³ -> g
@@ -1436,6 +1871,9 @@ FORMULA_ALIAS_TO_CANONICAL = {
     "难度得分": "difficulty_score",
     "难度倍率": "difficulty_multiplier",
     "难度加价百分比": "difficulty_markup_percent",
+    "支撑重量_g": "support_weight_g",
+    "支撑单价_元每g": "support_price_per_g",
+    "支撑费_元每件": "support_cost_per_part_cny",
 }
 
 FORMULA_CANONICAL_VARS = {
@@ -1451,6 +1889,9 @@ FORMULA_CANONICAL_VARS = {
     "difficulty_score",
     "difficulty_multiplier",
     "difficulty_markup_percent",
+    "support_weight_g",
+    "support_price_per_g",
+    "support_cost_per_part_cny",
     "quantity",
     "setup_fee_cny",
     "min_job_fee_cny",
@@ -1526,7 +1967,43 @@ def validate_formula_expression(expr: str) -> tuple[bool, str, list[str]]:
     return True, "", sorted(used_vars)
 
 
-def calculate_cost(volume_mm3, surface_area_mm2, material, layer_height_mm, infill_percent, user_materials, pricing_config, quantity):
+def _prusaslicer_sets_from_quote_params(layer_height_mm: float, infill_percent: int, perimeters: Optional[int]) -> dict[str, str]:
+    sets: dict[str, str] = {}
+    try:
+        lh = float(layer_height_mm)
+        if lh > 0:
+            sets["--layer-height"] = str(lh)
+    except Exception:
+        pass
+    try:
+        inf = int(infill_percent)
+        if 0 <= inf <= 100:
+            sets["--fill-density"] = f"{inf}%"
+    except Exception:
+        pass
+    if perimeters is not None:
+        try:
+            p = int(perimeters)
+            if 1 <= p <= 20:
+                sets["--perimeters"] = str(p)
+        except Exception:
+            pass
+    return sets
+
+
+def calculate_cost(
+    volume_mm3,
+    surface_area_mm2,
+    material,
+    layer_height_mm,
+    infill_percent,
+    user_materials,
+    pricing_config,
+    quantity,
+    model_path: Optional[str] = None,
+    slicer_preset: Optional[dict] = None,
+    perimeters: Optional[int] = None,
+):
     materials = normalize_materials(user_materials)
     spec = next((m for m in materials if m["name"] == material), None) or DEFAULT_MATERIALS[0]
     cfg = merge_pricing_config(pricing_config)
@@ -1566,6 +2043,89 @@ def calculate_cost(volume_mm3, surface_area_mm2, material, layer_height_mm, infi
     difficulty_multiplier = 1.0 + (difficulty_coefficient * difficulty_score)
     difficulty_markup_percent = max(0.0, (difficulty_multiplier - 1.0) * 100.0)
 
+    raw_use = cfg.get("use_prusaslicer")
+    use_prusaslicer = False
+    if isinstance(raw_use, (int, float)):
+        use_prusaslicer = bool(int(raw_use))
+    else:
+        use_prusaslicer = str(raw_use or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+    prusaslicer_support_mode = str(cfg.get("prusaslicer_support_mode") or "diff").strip().lower() or "diff"
+    support_weight_g_per_part = 0.0
+    slicer_time_s = None
+    slicer_filament_g_per_part = None
+    preset_used = None
+    if use_prusaslicer and model_path and os.path.exists(model_path):
+        preset_tmp_path = None
+        try:
+            outputs_job_dir = os.path.join(_outputs_base_dir(), _date_folder_utc(), uuid.uuid4().hex)
+            os.makedirs(outputs_job_dir, exist_ok=True)
+            base_name = os.path.splitext(os.path.basename(model_path))[0]
+            output_prefix = _sanitize_filename_component(base_name, fallback="model", max_len=60)
+            extra_loads: list[str] = []
+            extra_sets = _prusaslicer_sets_from_quote_params(layer_height_mm, infill_percent, perimeters)
+            if slicer_preset and isinstance(slicer_preset, dict) and slicer_preset.get("content"):
+                try:
+                    ext = str(slicer_preset.get("ext") or ".ini").strip().lower()
+                    if ext not in {".ini", ".cfg"}:
+                        ext = ".ini"
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tf:
+                        tf.write(bytes(slicer_preset.get("content")))
+                        preset_tmp_path = tf.name
+                    extra_loads.append(preset_tmp_path)
+                    preset_used = str(slicer_preset.get("name") or "") or None
+                except Exception:
+                    preset_tmp_path = None
+            if prusaslicer_support_mode == "diff":
+                st = prusaslicer_support_diff_stats(
+                    model_path,
+                    extra_loads=extra_loads,
+                    extra_sets=extra_sets,
+                    output_dir=outputs_job_dir,
+                    output_prefix=output_prefix,
+                )
+                support_weight_g_per_part = float(st.get("support_g") or 0.0)
+                slicer_time_s = int(st.get("estimated_time_s")) if st.get("estimated_time_s") is not None else None
+                if st.get("filament_g") is not None:
+                    try:
+                        slicer_filament_g_per_part = float(st.get("filament_g") or 0.0)
+                    except Exception:
+                        slicer_filament_g_per_part = None
+            else:
+                gcode_path = os.path.join(outputs_job_dir, f"{output_prefix}.gcode")
+                st = run_prusaslicer_slice(model_path, gcode_path, extra_loads=extra_loads, extra_sets=extra_sets)
+                slicer_time_s = int(st.get("estimated_time_s")) if st.get("estimated_time_s") is not None else None
+                if st.get("filament_g") is not None:
+                    try:
+                        slicer_filament_g_per_part = float(st.get("filament_g") or 0.0)
+                    except Exception:
+                        slicer_filament_g_per_part = None
+        except Exception:
+            support_weight_g_per_part = 0.0
+            slicer_time_s = None
+            slicer_filament_g_per_part = None
+            preset_used = None
+        finally:
+            try:
+                if preset_tmp_path and os.path.exists(preset_tmp_path):
+                    os.remove(preset_tmp_path)
+            except Exception:
+                pass
+    if slicer_filament_g_per_part is not None and slicer_filament_g_per_part > 0:
+        support_percent = 0.0
+        effective_weight_g = float(slicer_filament_g_per_part) * (1.0 + max(0.0, waste_percent) / 100.0)
+        material_cost = effective_weight_g * (float(spec.get("price_per_kg") or 0.0) / 1000.0)
+    if slicer_time_s is not None and slicer_time_s > 0:
+        unit_time_h = float(slicer_time_s) / 3600.0
+        machine_cost = unit_time_h * machine_hourly_rate
+        base_unit_cost = material_cost + machine_cost + post_per_part
+
+    support_price_per_g = float(cfg.get("support_price_per_g") or 0.0)
+    if support_price_per_g < 0:
+        support_price_per_g = 0.0
+    if support_price_per_g > 1000:
+        support_price_per_g = 1000.0
+    support_cost_per_part_cny = float(support_weight_g_per_part) * float(support_price_per_g)
+
     variables = {
         "effective_weight_g": float(effective_weight_g),
         "model_weight_g": float(model_weight_g),
@@ -1579,6 +2139,9 @@ def calculate_cost(volume_mm3, surface_area_mm2, material, layer_height_mm, infi
         "difficulty_score": float(difficulty_score),
         "difficulty_multiplier": float(difficulty_multiplier),
         "difficulty_markup_percent": float(difficulty_markup_percent),
+        "support_weight_g": float(support_weight_g_per_part),
+        "support_price_per_g": float(support_price_per_g),
+        "support_cost_per_part_cny": float(support_cost_per_part_cny),
         "quantity": float(quantity),
         "setup_fee_cny": float(setup_fee),
         "min_job_fee_cny": float(min_job_fee),
@@ -1597,9 +2160,9 @@ def calculate_cost(volume_mm3, surface_area_mm2, material, layer_height_mm, infi
 
     unit_cost = safe_eval_formula(unit_formula, variables)
     if unit_cost is None or unit_cost < 0:
-        unit_cost = base_unit_cost * float(difficulty_multiplier)
+        unit_cost = (base_unit_cost * float(difficulty_multiplier)) + float(support_cost_per_part_cny)
 
-    unit_cost_before_difficulty = float(unit_cost) / float(difficulty_multiplier) if float(difficulty_multiplier) > 0 else float(unit_cost)
+    unit_cost_before_difficulty = float(base_unit_cost)
 
     subtotal = (unit_cost * quantity) + setup_fee
     variables["unit_cost_cny"] = float(unit_cost)
@@ -1621,6 +2184,14 @@ def calculate_cost(volume_mm3, surface_area_mm2, material, layer_height_mm, infi
         "difficulty_multiplier": round(difficulty_multiplier, 6),
         "difficulty_markup_percent": round(max(0.0, (difficulty_multiplier - 1.0) * 100.0), 2),
         "unit_cost_before_difficulty_cny": round(unit_cost_before_difficulty, 2),
+        "support_weight_g_per_part": round(support_weight_g_per_part, 3),
+        "support_price_per_g": round(support_price_per_g, 4),
+        "support_cost_per_part_cny": round(support_cost_per_part_cny, 2),
+        "prusaslicer_used": bool(use_prusaslicer and slicer_time_s is not None),
+        "prusaslicer_filament_g_per_part": round(float(slicer_filament_g_per_part), 3) if slicer_filament_g_per_part is not None else None,
+        "prusaslicer_preset_used": preset_used,
+        "prusaslicer_sets": _prusaslicer_sets_from_quote_params(layer_height_mm, infill_percent, perimeters) if use_prusaslicer else {},
+        "prusaslicer_estimated_time_s": int(slicer_time_s) if slicer_time_s is not None else None,
         "setup_fee_cny": round(setup_fee, 2),
         "min_job_fee_cny": round(min_job_fee, 2),
         "subtotal_cny": round(subtotal, 2),
@@ -1639,7 +2210,9 @@ async def process_single_file(
     quantity: int,
     color: str,
     user_materials: list,
-    pricing_config: dict
+    pricing_config: dict,
+    slicer_preset: Optional[dict] = None,
+    perimeters: Optional[int] = None,
 ):
     filename = file.filename or "unnamed_file"
     _, ext = os.path.splitext(filename.lower())
@@ -1658,12 +2231,19 @@ async def process_single_file(
             "error": "文件大小必须小于 100MB"
         }
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
-        tmp.write(file_content)
-        tmp_path = tmp.name
-
     try:
-        volume, surface_area, dimensions = calculate_geometry(tmp_path)
+        safe_original = os.path.basename(filename)
+        original_stem = os.path.splitext(safe_original)[0]
+        safe_stem = _sanitize_filename_component(original_stem, fallback="model", max_len=80)
+        job_id = uuid.uuid4().hex
+        uploads_day_dir = os.path.join(_uploads_base_dir(), _date_folder_utc())
+        os.makedirs(uploads_day_dir, exist_ok=True)
+        saved_name = f"{job_id}_{safe_stem}{ext}"
+        model_saved_path = os.path.join(uploads_day_dir, saved_name)
+        with open(model_saved_path, "wb") as f:
+            f.write(bytes(file_content))
+
+        volume, surface_area, dimensions = calculate_geometry(model_saved_path)
         if volume == 0:
             return {
                 "filename": filename,
@@ -1672,9 +2252,27 @@ async def process_single_file(
             }
 
         unit_cost, model_weight_g, unit_print_time_h, total_cost, effective_weight_g, total_print_time_h, breakdown = calculate_cost(
-            volume, surface_area, material, layer_height, infill, user_materials, pricing_config, quantity
+            volume,
+            surface_area,
+            material,
+            layer_height,
+            infill,
+            user_materials,
+            pricing_config,
+            quantity,
+            model_path=model_saved_path,
+            slicer_preset=slicer_preset,
+            perimeters=perimeters,
         )
         total_weight = round(model_weight_g * quantity, 2)
+        try:
+            filament_g = None
+            if isinstance(breakdown, dict):
+                filament_g = breakdown.get("prusaslicer_filament_g_per_part")
+            if filament_g is not None:
+                total_weight = round(float(filament_g) * quantity, 2)
+        except Exception:
+            pass
 
         dimensions_str = f"{dimensions['x']} × {dimensions['y']} × {dimensions['z']} mm"
 
@@ -1700,14 +2298,22 @@ async def process_single_file(
             "cost_breakdown": breakdown,
             "effective_weight_g": round(effective_weight_g * quantity, 2)
         }
-    finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+    except Exception as e:
+        msg = str(e or "").strip()
+        if len(msg) > 200:
+            msg = msg[:200]
+        return {
+            "filename": filename,
+            "status": "failed",
+            "error": msg or "处理失败"
+        }
 
 
 @app.on_event("startup")
 def on_startup():
     init_db()
+    _uploads_base_dir()
+    _outputs_base_dir()
 
 
 @app.get("/api/auth/captcha")
@@ -1972,6 +2578,9 @@ class PricingConfig(BaseModel):
     difficulty_coefficient: float = 0.25
     difficulty_ratio_low: float = 0.8
     difficulty_ratio_high: float = 4.0
+    use_prusaslicer: int = 0
+    prusaslicer_support_mode: str = "diff"
+    support_price_per_g: float = 0.0
     time_overhead_min: float = 5.0
     time_vol_min_per_cm3: float = 0.8
     time_area_min_per_cm2: float = 0.0
@@ -2051,6 +2660,50 @@ def update_user_settings(payload: UserSettingsUpdate, request: Request, current_
     )
     return {"status": "success"}
 
+
+@app.get("/api/slicer/presets")
+def api_list_slicer_presets(current_user=Depends(get_current_user)):
+    items = list_slicer_presets(int(current_user["id"]))
+    return {"items": items}
+
+
+@app.post("/api/slicer/presets")
+async def api_upsert_slicer_preset(
+    request: Request,
+    file: UploadFile = File(...),
+    name: str = Form("", min_length=0, max_length=60),
+    current_user=Depends(get_current_user),
+):
+    filename = file.filename or ""
+    ext = os.path.splitext(filename)[1].strip().lower()
+    if not ext:
+        ext = ".ini"
+    raw = await file.read()
+    inferred_name = os.path.splitext(os.path.basename(filename))[0].strip()
+    preset_name = (name or "").strip() or inferred_name or "preset"
+    saved = upsert_slicer_preset(int(current_user["id"]), preset_name, ext, raw)
+    write_audit_event(
+        action="slicer.preset.upsert",
+        request=request,
+        user=current_user,
+        detail={"preset_id": int(saved["id"]), "name": str(saved["name"]), "ext": str(saved["ext"]), "bytes": int(len(raw or b""))},
+    )
+    return {"status": "ok", "preset": saved}
+
+
+@app.delete("/api/slicer/presets/{preset_id}")
+def api_delete_slicer_preset(preset_id: int, request: Request, current_user=Depends(get_current_user)):
+    ok = delete_slicer_preset(int(current_user["id"]), int(preset_id))
+    if not ok:
+        raise HTTPException(status_code=404, detail="预设不存在或无权限")
+    write_audit_event(
+        action="slicer.preset.delete",
+        request=request,
+        user=current_user,
+        detail={"preset_id": int(preset_id)},
+    )
+    return {"status": "ok"}
+
 @app.get("/api/auth/me")
 def auth_me(current_user=Depends(get_current_user)):
     level, expires_ts = get_membership_effective(current_user)
@@ -2067,6 +2720,62 @@ def auth_me(current_user=Depends(get_current_user)):
         "membership_expires_at": expires_ts,
         "is_member": level == "member",
     }
+
+
+@app.get("/api/admin/defaults")
+def admin_get_defaults(current_user=Depends(get_current_user)):
+    require_admin(current_user)
+    return get_app_defaults()
+
+
+@app.post("/api/admin/defaults/from-me")
+def admin_set_defaults_from_me(request: Request, current_user=Depends(get_current_user)):
+    require_admin(current_user)
+    with get_db_conn() as conn:
+        row = conn.execute("SELECT materials, colors, pricing_config FROM users WHERE id = ?", (current_user["id"],)).fetchone()
+    raw_materials = json.loads(row["materials"]) if row and row["materials"] else DEFAULT_MATERIALS
+    colors = json.loads(row["colors"]) if row and row["colors"] else DEFAULT_COLORS
+    materials = normalize_materials(raw_materials, fallback_colors=colors)
+    derived_colors = []
+    for m in materials:
+        for c in m.get("colors", []):
+            if c not in derived_colors:
+                derived_colors.append(c)
+    raw_pricing = json.loads(row["pricing_config"]) if row and row["pricing_config"] else DEFAULT_PRICING_CONFIG
+    pricing_config = merge_pricing_config(raw_pricing)
+    unit_ok, unit_err, _ = validate_formula_expression(str(pricing_config.get("unit_cost_formula") or "").strip())
+    total_ok, total_err, _ = validate_formula_expression(str(pricing_config.get("total_cost_formula") or "").strip())
+    if not unit_ok or not total_ok:
+        messages = []
+        if not unit_ok:
+            messages.append(f"单件公式：{unit_err or '无效'}")
+        if not total_ok:
+            messages.append(f"总价公式：{total_err or '无效'}")
+        raise HTTPException(status_code=400, detail="；".join(messages) or "公式无效")
+    payload = {"materials": materials, "colors": derived_colors, "pricing_config": pricing_config}
+    now_iso = datetime.now(timezone.utc).isoformat()
+    value_json = json.dumps(payload, ensure_ascii=False)
+    with get_db_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO app_defaults (key, value_json, updated_at, updated_by, updated_by_username)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET
+                value_json = excluded.value_json,
+                updated_at = excluded.updated_at,
+                updated_by = excluded.updated_by,
+                updated_by_username = excluded.updated_by_username
+            """,
+            (APP_DEFAULTS_KEY, value_json, now_iso, int(current_user["id"]), str(current_user["username"])),
+        )
+        conn.commit()
+    write_audit_event(
+        action="admin.defaults.update",
+        request=request,
+        user=current_user,
+        detail={"key": APP_DEFAULTS_KEY, "materials_count": len(materials), "colors_count": len(derived_colors)},
+    )
+    return {"status": "ok", "key": APP_DEFAULTS_KEY, "updated_at": now_iso}
 
 
 @app.get("/api/admin/users")
@@ -2494,6 +3203,8 @@ async def get_quote(
     material: str = Form("PLA", min_length=1, max_length=40),
     layer_height: float = Form(0.2, ge=0.05, le=1.0),
     infill: int = Form(20, ge=0, le=100),
+    wall_count: int = Form(3, ge=1, le=20),
+    slicer_preset_id: Optional[int] = Form(default=None),
     quantity: int = Form(1, ge=1, le=5000),
     color: str = Form("White", min_length=1, max_length=40),
     current_user=Depends(get_current_user),
@@ -2535,9 +3246,26 @@ async def get_quote(
     if allowed_colors and color not in allowed_colors:
         raise HTTPException(status_code=400, detail="颜色参数不合法")
 
+    slicer_preset = None
+    if slicer_preset_id is not None:
+        slicer_preset = get_slicer_preset_by_id(int(current_user["id"]), int(slicer_preset_id))
+        if slicer_preset is None:
+            raise HTTPException(status_code=400, detail="切片预设不存在或无权限")
+
     results = []
     for file in files:
-        result = await process_single_file(file, material, layer_height, infill, quantity, color, user_materials, pricing_config)
+        result = await process_single_file(
+            file,
+            material,
+            layer_height,
+            infill,
+            quantity,
+            color,
+            user_materials,
+            pricing_config,
+            slicer_preset=slicer_preset,
+            perimeters=wall_count,
+        )
         results.append(result)
 
     success_items = [item for item in results if item["status"] == "success"]

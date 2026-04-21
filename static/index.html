@@ -55,7 +55,7 @@
                                 <dd class="mt-1 text-2xl font-semibold text-indigo-600" id="sum-total-cost">-</dd>
                             </div>
                             <div>
-                                <dt class="text-sm font-medium text-gray-500">总时间 (h)</dt>
+                                <dt class="text-sm font-medium text-gray-500">总时间</dt>
                                 <dd class="mt-1 text-sm text-gray-900" id="sum-total-time">-</dd>
                             </div>
                         </dl>
@@ -71,7 +71,7 @@
                                         <th class="px-2 py-1.5">数量</th>
                                         <th class="px-2 py-1.5">几何信息</th>
                                         <th class="px-2 py-1.5">重量(g)</th>
-                                        <th class="px-2 py-1.5">时间(h)</th>
+                                        <th class="px-2 py-1.5">预估时间</th>
                                         <th class="px-2 py-1.5">单价</th>
                                         <th class="px-2 py-1.5">总价</th>
                                         <th class="px-2 py-1.5">状态/错误</th>
@@ -244,7 +244,10 @@
                     <div class="w-full max-w-2xl bg-white rounded-lg shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
                         <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
                             <h4 class="text-sm font-semibold text-gray-800">用户中心 - 偏好设置</h4>
-                            <button id="user-center-close-btn" type="button" class="text-gray-500 hover:text-gray-700">关闭</button>
+                            <div class="flex items-center gap-2">
+                                <button id="user-center-set-defaults-btn" type="button" class="hidden text-xs px-3 py-1.5 rounded-md border border-indigo-300 text-indigo-700 hover:bg-indigo-50">设为默认</button>
+                                <button id="user-center-close-btn" type="button" class="text-gray-500 hover:text-gray-700">关闭</button>
+                            </div>
                         </div>
                         <div class="p-4 overflow-y-auto flex-1 space-y-6">
                             <!-- 材料设置 -->
@@ -315,6 +318,9 @@
                                                 <tr><td class="px-2 py-1.5">难度得分（0-1）</td><td class="px-2 py-1.5">难度得分</td><td class="px-2 py-1.5">difficulty_score</td></tr>
                                                 <tr><td class="px-2 py-1.5">难度倍率（>=1）</td><td class="px-2 py-1.5">难度倍率</td><td class="px-2 py-1.5">difficulty_multiplier</td></tr>
                                                 <tr><td class="px-2 py-1.5">难度加价百分比</td><td class="px-2 py-1.5">难度加价百分比</td><td class="px-2 py-1.5">difficulty_markup_percent</td></tr>
+                                                <tr><td class="px-2 py-1.5">支撑重量（克/件）</td><td class="px-2 py-1.5">支撑重量_g</td><td class="px-2 py-1.5">support_weight_g</td></tr>
+                                                <tr><td class="px-2 py-1.5">支撑单价（元/克）</td><td class="px-2 py-1.5">支撑单价_元每g</td><td class="px-2 py-1.5">support_price_per_g</td></tr>
+                                                <tr><td class="px-2 py-1.5">支撑费（元/件）</td><td class="px-2 py-1.5">支撑费_元每件</td><td class="px-2 py-1.5">support_cost_per_part_cny</td></tr>
                                                 <tr><td class="px-2 py-1.5">数量</td><td class="px-2 py-1.5">数量</td><td class="px-2 py-1.5">quantity</td></tr>
                                                 <tr><td class="px-2 py-1.5">上机/调机费（元/模型）</td><td class="px-2 py-1.5">上机费</td><td class="px-2 py-1.5">setup_fee_cny</td></tr>
                                                 <tr><td class="px-2 py-1.5">最低起步价（元/模型）</td><td class="px-2 py-1.5">最低起步价</td><td class="px-2 py-1.5">min_job_fee_cny</td></tr>
@@ -372,6 +378,57 @@
                                         <label class="block text-xs text-gray-600">难度阈值高（表面积/体积）</label>
                                         <input id="cfg-difficulty-ratio-high" type="number" step="0.01" class="mt-1 w-full border border-gray-300 rounded-sm text-xs px-2 py-1" />
                                     </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-600">支撑单价（元/克）</label>
+                                        <input id="cfg-support-price-per-g" type="number" step="0.001" class="mt-1 w-full border border-gray-300 rounded-sm text-xs px-2 py-1" />
+                                    </div>
+                                    <label class="flex items-center gap-2 text-xs text-gray-700">
+                                        <input id="cfg-use-prusaslicer" type="checkbox" class="rounded border-gray-300" />
+                                        <span>使用 PrusaSlicer 切片估时/支撑（服务器需配置 PRUSASLICER_PATH）</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between items-center mb-2">
+                                    <h5 class="text-sm font-medium text-gray-700">切片配置（.ini 预设）</h5>
+                                    <div class="flex items-center gap-2">
+                                        <p id="slicer-presets-msg" class="text-xs hidden"></p>
+                                        <button id="slicer-presets-refresh-btn" type="button" class="text-xs text-indigo-600 hover:text-indigo-800">刷新</button>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-1 sm:grid-cols-[1fr,1fr,auto] gap-2 items-end">
+                                    <div>
+                                        <label class="block text-xs text-gray-600">名称（可选）</label>
+                                        <input id="slicer-preset-name" type="text" maxlength="60" class="mt-1 w-full border border-gray-300 rounded-sm text-xs px-2 py-1" placeholder="例如：PLA-0.2mm-20%填充" />
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-600">选择 .ini 文件</label>
+                                        <input id="slicer-preset-file" type="file" accept=".ini" class="mt-1 w-full text-xs" />
+                                    </div>
+                                    <button id="slicer-preset-upload-btn" type="button" class="h-[30px] px-3 rounded-md bg-indigo-600 text-white text-xs hover:bg-indigo-700">上传</button>
+                                </div>
+                                <div class="mt-3">
+                                    <label class="block text-xs text-gray-600">报价默认使用的预设</label>
+                                    <select id="cfg-slicer-preset-id" class="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md text-sm">
+                                        <option value="">不使用预设</option>
+                                    </select>
+                                    <div class="text-[11px] text-gray-500 mt-1">仅对勾选“使用 PrusaSlicer 切片估时/支撑”的用户生效；不选择则只用基础参数估算。</div>
+                                </div>
+                                <div class="mt-3 overflow-x-auto border border-gray-200 rounded-md">
+                                    <table class="min-w-full text-[11px] text-left">
+                                        <thead class="bg-gray-50 text-gray-600">
+                                            <tr>
+                                                <th class="px-2 py-2 w-20">ID</th>
+                                                <th class="px-2 py-2">名称</th>
+                                                <th class="px-2 py-2 w-20">扩展</th>
+                                                <th class="px-2 py-2 w-44">创建时间</th>
+                                                <th class="px-2 py-2 w-20 text-right">操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="slicer-presets-tbody" class="bg-white divide-y divide-gray-100">
+                                            <tr><td colspan="5" class="px-2 py-3 text-gray-500">暂无预设</td></tr>
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
                         </div>
@@ -468,6 +525,7 @@
             const userCenterModal = document.getElementById('user-center-modal');
             const userCenterBackdrop = document.getElementById('user-center-backdrop');
             const userCenterCloseBtn = document.getElementById('user-center-close-btn');
+            const userCenterSetDefaultsBtn = document.getElementById('user-center-set-defaults-btn');
             const userCenterSaveBtn = document.getElementById('user-center-save-btn');
             const materialsTbody = document.getElementById('materials-tbody');
             const addMaterialBtn = document.getElementById('add-material-btn');
@@ -488,8 +546,17 @@
             const cfgDifficultyCoefficient = document.getElementById('cfg-difficulty-coefficient');
             const cfgDifficultyRatioLow = document.getElementById('cfg-difficulty-ratio-low');
             const cfgDifficultyRatioHigh = document.getElementById('cfg-difficulty-ratio-high');
+            const cfgSupportPricePerG = document.getElementById('cfg-support-price-per-g');
+            const cfgUsePrusaSlicer = document.getElementById('cfg-use-prusaslicer');
             const cfgUnitCostFormula = document.getElementById('cfg-unit-cost-formula');
             const cfgTotalCostFormula = document.getElementById('cfg-total-cost-formula');
+            const slicerPresetNameInput = document.getElementById('slicer-preset-name');
+            const slicerPresetFileInput = document.getElementById('slicer-preset-file');
+            const slicerPresetUploadBtn = document.getElementById('slicer-preset-upload-btn');
+            const slicerPresetsRefreshBtn = document.getElementById('slicer-presets-refresh-btn');
+            const slicerPresetsMsg = document.getElementById('slicer-presets-msg');
+            const slicerPresetsTbody = document.getElementById('slicer-presets-tbody');
+            const cfgSlicerPresetId = document.getElementById('cfg-slicer-preset-id');
             
             const selectedFilesMap = new Map();
             const thumbnailMap = new Map();
@@ -521,6 +588,7 @@
                 material: "PLA",
                 color: "White",
                 quantity: 1,
+                slicer_preset_id: null,
             };
             let MATERIAL_OPTIONS = [
                  { name: "PLA", density: 1.24, price_per_kg: 200.0, colors: ["White", "Black", "Gray", "Red", "Blue"] },
@@ -538,6 +606,9 @@
                 difficulty_coefficient: 0.25,
                 difficulty_ratio_low: 0.8,
                 difficulty_ratio_high: 4.0,
+                use_prusaslicer: 0,
+                prusaslicer_support_mode: 'diff',
+                support_price_per_g: 0.0,
                 time_overhead_min: 5.0,
                 time_vol_min_per_cm3: 0.8,
                 time_area_min_per_cm2: 0.0,
@@ -545,15 +616,26 @@
                 time_layer_height_exponent: 1.0,
                 time_ref_infill_percent: 20.0,
                 time_infill_coefficient: 1.0,
-                unit_cost_formula: '((effective_weight_g * (price_per_kg / 1000.0)) + (unit_time_h * machine_hourly_rate_cny) + post_process_fee_per_part_cny) * difficulty_multiplier',
+                unit_cost_formula: '((effective_weight_g * (price_per_kg / 1000.0)) + (unit_time_h * machine_hourly_rate_cny) + post_process_fee_per_part_cny) * difficulty_multiplier + support_cost_per_part_cny',
                 total_cost_formula: 'max((unit_cost_cny * quantity) + setup_fee_cny, min_job_fee_cny)',
             };
             const TOKEN_STORAGE_KEY = "demo_access_token_v1";
             const USER_STORAGE_KEY = "demo_user_v1";
+            const SLICER_PRESET_STORAGE_PREFIX = "demo_slicer_preset_id_v1_";
             let currentUser = null;
             let authToken = "";
             let currentCaptchaId = "";
             let currentCaptchaUrl = "";
+            let slicerPresets = [];
+
+            function formatTimeHMS(hours) {
+                if (!hours || isNaN(hours)) return '00h00m00s';
+                const totalSeconds = Math.round(hours * 3600);
+                const h = Math.floor(totalSeconds / 3600).toString().padStart(2, '0');
+                const m = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, '0');
+                const s = (totalSeconds % 60).toString().padStart(2, '0');
+                return `${h}h${m}m${s}s`;
+            }
 
             async function refreshLoginCaptcha() {
                 try {
@@ -619,12 +701,18 @@
                 try {
                     authToken = localStorage.getItem(TOKEN_STORAGE_KEY) || "";
                     const rawUser = localStorage.getItem(USER_STORAGE_KEY);
-                    if (!rawUser) return;
+                    if (!rawUser) {
+                        currentUser = null;
+                        loadSlicerPresetSelection();
+                        return;
+                    }
                     const parsedUser = JSON.parse(rawUser);
                     if (parsedUser && parsedUser.username) currentUser = parsedUser;
+                    loadSlicerPresetSelection();
                 } catch (e) {
                     currentUser = null;
                     authToken = "";
+                    loadSlicerPresetSelection();
                 }
             }
 
@@ -652,6 +740,180 @@
                     renderAuthUI();
                 }
                 return response;
+            }
+
+            function getSlicerPresetStorageKey() {
+                const uid = currentUser && currentUser.id ? String(currentUser.id) : "guest";
+                return `${SLICER_PRESET_STORAGE_PREFIX}${uid}`;
+            }
+
+            function loadSlicerPresetSelection() {
+                try {
+                    const raw = localStorage.getItem(getSlicerPresetStorageKey());
+                    if (!raw) {
+                        quoteOptions.slicer_preset_id = null;
+                        return;
+                    }
+                    const parsed = Number.parseInt(raw, 10);
+                    quoteOptions.slicer_preset_id = Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+                } catch (e) {
+                    quoteOptions.slicer_preset_id = null;
+                }
+            }
+
+            function saveSlicerPresetSelection() {
+                try {
+                    const key = getSlicerPresetStorageKey();
+                    if (quoteOptions.slicer_preset_id) {
+                        localStorage.setItem(key, String(quoteOptions.slicer_preset_id));
+                    } else {
+                        localStorage.removeItem(key);
+                    }
+                } catch (e) {
+                }
+            }
+
+            function setSlicerPresetsMsg(text, ok) {
+                if (!slicerPresetsMsg) return;
+                slicerPresetsMsg.textContent = text || "";
+                slicerPresetsMsg.className = ok ? "text-xs text-green-600" : "text-xs text-red-600";
+                slicerPresetsMsg.classList.remove('hidden');
+                if (text) {
+                    setTimeout(() => {
+                        slicerPresetsMsg.classList.add('hidden');
+                        slicerPresetsMsg.textContent = "";
+                    }, 2500);
+                }
+            }
+
+            function renderSlicerPresetsUI() {
+                if (cfgSlicerPresetId) {
+                    const selected = quoteOptions.slicer_preset_id ? String(quoteOptions.slicer_preset_id) : "";
+                    cfgSlicerPresetId.innerHTML = [
+                        '<option value="">不使用预设</option>',
+                        ...(slicerPresets || []).map((p) => `<option value="${p.id}" ${String(p.id) === selected ? "selected" : ""}>${p.name} (#${p.id})</option>`)
+                    ].join('');
+                }
+                if (!slicerPresetsTbody) return;
+                const items = slicerPresets || [];
+                if (!items.length) {
+                    slicerPresetsTbody.innerHTML = '<tr><td colspan="5" class="px-2 py-3 text-gray-500">暂无预设</td></tr>';
+                    return;
+                }
+                slicerPresetsTbody.innerHTML = items.map((p) => `
+                    <tr>
+                        <td class="px-2 py-2 font-mono">${p.id}</td>
+                        <td class="px-2 py-2">${p.name || '-'}</td>
+                        <td class="px-2 py-2">${p.ext || '-'}</td>
+                        <td class="px-2 py-2">${p.created_at || '-'}</td>
+                        <td class="px-2 py-2 text-right">
+                            <button type="button" data-slicer-delete="${p.id}" class="text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 rounded px-2 py-0.5">删除</button>
+                        </td>
+                    </tr>
+                `).join('');
+                slicerPresetsTbody.querySelectorAll('[data-slicer-delete]').forEach((btn) => {
+                    btn.addEventListener('click', async () => {
+                        const id = Number.parseInt(btn.getAttribute('data-slicer-delete') || "", 10);
+                        if (!Number.isFinite(id)) return;
+                        await deleteSlicerPreset(id);
+                    });
+                });
+            }
+
+            async function fetchSlicerPresets() {
+                if (!authToken) return;
+                try {
+                    const resp = await authFetch('/api/slicer/presets');
+                    if (resp.status === 401) {
+                        if (userCenterModal) userCenterModal.classList.add('hidden');
+                        openLoginModal();
+                        return;
+                    }
+                    const data = await resp.json();
+                    if (!resp.ok) throw new Error((data && data.detail) ? String(data.detail) : '加载失败');
+                    slicerPresets = Array.isArray(data.items) ? data.items : [];
+                    if (quoteOptions.slicer_preset_id) {
+                        const exists = slicerPresets.some((p) => Number(p.id) === Number(quoteOptions.slicer_preset_id));
+                        if (!exists) {
+                            quoteOptions.slicer_preset_id = null;
+                            saveSlicerPresetSelection();
+                        }
+                    }
+                    renderSlicerPresetsUI();
+                } catch (e) {
+                    setSlicerPresetsMsg(e.message || '加载失败', false);
+                }
+            }
+
+            async function uploadSlicerPreset() {
+                if (!authToken) {
+                    openLoginModal();
+                    return;
+                }
+                const file = slicerPresetFileInput && slicerPresetFileInput.files && slicerPresetFileInput.files[0] ? slicerPresetFileInput.files[0] : null;
+                if (!file) {
+                    setSlicerPresetsMsg('请选择 .ini 文件', false);
+                    return;
+                }
+                const name = slicerPresetNameInput ? String(slicerPresetNameInput.value || "").trim() : "";
+                const formData = new FormData();
+                formData.append("file", file);
+                if (name) formData.append("name", name);
+                try {
+                    const resp = await authFetch('/api/slicer/presets', { method: 'POST', body: formData });
+                    if (resp.status === 401) {
+                        if (userCenterModal) userCenterModal.classList.add('hidden');
+                        openLoginModal();
+                        return;
+                    }
+                    const data = await resp.json();
+                    if (!resp.ok) throw new Error((data && data.detail) ? String(data.detail) : '上传失败');
+                    setSlicerPresetsMsg('上传成功', true);
+                    if (slicerPresetNameInput) slicerPresetNameInput.value = "";
+                    if (slicerPresetFileInput) slicerPresetFileInput.value = "";
+                    const preset = data && data.preset ? data.preset : null;
+                    await fetchSlicerPresets();
+                    if (preset && preset.id) {
+                        quoteOptions.slicer_preset_id = Number(preset.id);
+                        saveSlicerPresetSelection();
+                        renderSlicerPresetsUI();
+                        if (selectedFilesMap.size > 0) {
+                            await reQuoteAllSelectedFiles('切片预设已更新，重算报价');
+                        }
+                    }
+                } catch (e) {
+                    setSlicerPresetsMsg(e.message || '上传失败', false);
+                }
+            }
+
+            async function deleteSlicerPreset(presetId) {
+                if (!authToken) return;
+                try {
+                    const resp = await authFetch(`/api/slicer/presets/${presetId}`, { method: 'DELETE' });
+                    if (resp.status === 401) {
+                        if (userCenterModal) userCenterModal.classList.add('hidden');
+                        openLoginModal();
+                        return;
+                    }
+                    let data = null;
+                    try {
+                        data = await resp.json();
+                    } catch (e) {
+                        data = null;
+                    }
+                    if (!resp.ok) throw new Error((data && data.detail) ? String(data.detail) : '删除失败');
+                    if (quoteOptions.slicer_preset_id && Number(quoteOptions.slicer_preset_id) === Number(presetId)) {
+                        quoteOptions.slicer_preset_id = null;
+                        saveSlicerPresetSelection();
+                    }
+                    setSlicerPresetsMsg('已删除', true);
+                    await fetchSlicerPresets();
+                    if (selectedFilesMap.size > 0) {
+                        await reQuoteAllSelectedFiles('切片预设已删除，重算报价');
+                    }
+                } catch (e) {
+                    setSlicerPresetsMsg(e.message || '删除失败', false);
+                }
             }
 
             function showMembershipMsg(text, ok = false) {
@@ -793,7 +1055,7 @@
                 document.getElementById('sum-total-files').textContent = currentResults.length;
                 document.getElementById('sum-status').textContent = `${successItems.length} / ${failedItems.length}`;
                 document.getElementById('sum-total-cost').textContent = '¥ ' + successItems.reduce((s, i) => s + (i.cost_cny || 0), 0).toFixed(2);
-                document.getElementById('sum-total-time').textContent = successItems.reduce((s, i) => s + (i.estimated_time_h || 0), 0).toFixed(2);
+                document.getElementById('sum-total-time').textContent = formatTimeHMS(successItems.reduce((s, i) => s + (i.estimated_time_h || 0), 0));
             }
 
             async function quoteSingleFileWithOptions(file, options) {
@@ -802,6 +1064,9 @@
                 formData.append("material", options.material);
                 formData.append("color", options.color);
                 formData.append("quantity", String(options.quantity));
+                if (quoteOptions.slicer_preset_id) {
+                    formData.append("slicer_preset_id", String(quoteOptions.slicer_preset_id));
+                }
                 const response = await authFetch('/api/quote', { method: 'POST', body: formData });
                 const data = await response.json();
                 if (!response.ok) {
@@ -1185,6 +1450,7 @@
                     }
                 } catch (e) {}
                 saveUserSession();
+                loadSlicerPresetSelection();
                 renderAuthUI();
                 await fetchUserSettings();
                 closeLoginModal();
@@ -1284,13 +1550,31 @@
                 userDropdown.classList.add('hidden');
                 if (!currentUser) return;
                 renderUserCenterUI();
+                if (userCenterSetDefaultsBtn) {
+                    userCenterSetDefaultsBtn.classList.toggle('hidden', !(currentUser && currentUser.is_admin));
+                }
                 userCenterModal.classList.remove('hidden');
+                fetchSlicerPresets();
             });
 
             membershipCloseBtn.addEventListener('click', closeMembershipModal);
             membershipBackdrop.addEventListener('click', closeMembershipModal);
             membershipRefreshBtn.addEventListener('click', refreshMembershipStatus);
             membershipOrdersBtn.addEventListener('click', toggleMembershipOrders);
+            if (slicerPresetsRefreshBtn) slicerPresetsRefreshBtn.addEventListener('click', fetchSlicerPresets);
+            if (slicerPresetUploadBtn) slicerPresetUploadBtn.addEventListener('click', uploadSlicerPreset);
+            if (cfgSlicerPresetId) {
+                cfgSlicerPresetId.addEventListener('change', async () => {
+                    const raw = String(cfgSlicerPresetId.value || "").trim();
+                    const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+                    quoteOptions.slicer_preset_id = Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+                    saveSlicerPresetSelection();
+                    renderSlicerPresetsUI();
+                    if (selectedFilesMap.size > 0) {
+                        await reQuoteAllSelectedFiles('切片预设已变更，重算报价');
+                    }
+                });
+            }
             
             userCenterCloseBtn.addEventListener('click', () => {
                 userCenterModal.classList.add('hidden');
@@ -1301,6 +1585,64 @@
                 userCenterModal.classList.add('hidden');
                 userCenterMsg.classList.add('hidden');
             });
+
+            if (userCenterSetDefaultsBtn) {
+                userCenterSetDefaultsBtn.addEventListener('click', async () => {
+                    if (!authToken) return;
+                    if (!currentUser || !currentUser.is_admin) {
+                        alert('无管理员权限');
+                        return;
+                    }
+                    try {
+                        const formulaOk = await validateCurrentFormulas();
+                        if (!formulaOk) return;
+                        syncPricingFromInputs();
+                        const payload = {
+                            materials: MATERIAL_OPTIONS,
+                            pricing_config: PRICING_CONFIG
+                        };
+                        const saveRes = await authFetch('/api/user/settings', {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                        if (saveRes.status === 401) {
+                            userCenterModal.classList.add('hidden');
+                            openLoginModal();
+                            return;
+                        }
+                        if (!saveRes.ok) {
+                            let data = null;
+                            try {
+                                data = await saveRes.json();
+                            } catch (e) {
+                                data = null;
+                            }
+                            const msg = data && data.detail ? String(data.detail) : '保存失败';
+                            throw new Error(msg);
+                        }
+                        const resp = await authFetch('/api/admin/defaults/from-me', { method: 'POST' });
+                        let data = null;
+                        try {
+                            data = await resp.json();
+                        } catch (e) {
+                            data = null;
+                        }
+                        if (!resp.ok) {
+                            throw new Error((data && data.detail) ? String(data.detail) : '设为默认失败');
+                        }
+                        const prev = userCenterMsg.textContent || '保存成功';
+                        userCenterMsg.textContent = '已设为全局默认（新用户生效）';
+                        userCenterMsg.classList.remove('hidden');
+                        setTimeout(() => {
+                            userCenterMsg.textContent = prev;
+                            userCenterMsg.classList.add('hidden');
+                        }, 3000);
+                    } catch (e) {
+                        alert(e.message);
+                    }
+                });
+            }
 
             function renderUserCenterUI() {
                 materialsTbody.innerHTML = MATERIAL_OPTIONS.map((m, idx) => `
@@ -1324,8 +1666,12 @@
                 cfgDifficultyCoefficient.value = String(((Number(PRICING_CONFIG.difficulty_coefficient ?? 0.25) || 0) * 100).toFixed(2));
                 cfgDifficultyRatioLow.value = String(PRICING_CONFIG.difficulty_ratio_low ?? 0.8);
                 cfgDifficultyRatioHigh.value = String(PRICING_CONFIG.difficulty_ratio_high ?? 4.0);
-                cfgUnitCostFormula.value = String(PRICING_CONFIG.unit_cost_formula ?? '((effective_weight_g * (price_per_kg / 1000.0)) + (unit_time_h * machine_hourly_rate_cny) + post_process_fee_per_part_cny) * difficulty_multiplier');
+                cfgSupportPricePerG.value = String(PRICING_CONFIG.support_price_per_g ?? 0);
+                if (cfgUsePrusaSlicer) cfgUsePrusaSlicer.checked = !!(Number(PRICING_CONFIG.use_prusaslicer) || 0);
+                cfgUnitCostFormula.value = String(PRICING_CONFIG.unit_cost_formula ?? '((effective_weight_g * (price_per_kg / 1000.0)) + (unit_time_h * machine_hourly_rate_cny) + post_process_fee_per_part_cny) * difficulty_multiplier + support_cost_per_part_cny');
                 cfgTotalCostFormula.value = String(PRICING_CONFIG.total_cost_formula ?? 'max((unit_cost_cny * quantity) + setup_fee_cny, min_job_fee_cny)');
+                loadSlicerPresetSelection();
+                renderSlicerPresetsUI();
             }
 
             function syncPricingFromInputs() {
@@ -1341,6 +1687,9 @@
                     difficulty_coefficient: Math.max(0, diffCoeffPercent) / 100.0,
                     difficulty_ratio_low: Number(cfgDifficultyRatioLow.value) || 0,
                     difficulty_ratio_high: Number(cfgDifficultyRatioHigh.value) || 0,
+                    use_prusaslicer: cfgUsePrusaSlicer && cfgUsePrusaSlicer.checked ? 1 : 0,
+                    prusaslicer_support_mode: 'diff',
+                    support_price_per_g: Number(cfgSupportPricePerG.value) || 0,
                     time_overhead_min: Number(cfgTimeOverheadMin.value) || 0,
                     time_vol_min_per_cm3: Number(cfgTimeVolMinPerCm3.value) || 0,
                     unit_cost_formula: String(cfgUnitCostFormula.value || '').trim(),
@@ -1395,7 +1744,7 @@
             });
 
             formulaResetBtn.addEventListener('click', () => {
-                cfgUnitCostFormula.value = '((effective_weight_g * (price_per_kg / 1000.0)) + (unit_time_h * machine_hourly_rate_cny) + post_process_fee_per_part_cny) * difficulty_multiplier';
+                cfgUnitCostFormula.value = '((effective_weight_g * (price_per_kg / 1000.0)) + (unit_time_h * machine_hourly_rate_cny) + post_process_fee_per_part_cny) * difficulty_multiplier + support_cost_per_part_cny';
                 cfgTotalCostFormula.value = 'max((unit_cost_cny * quantity) + setup_fee_cny, min_job_fee_cny)';
                 syncPricingFromInputs();
                 formulaValidateMsg.classList.add('hidden');
@@ -1469,6 +1818,11 @@
                 cfgPostPerPart,
                 cfgTimeOverheadMin,
                 cfgTimeVolMinPerCm3,
+                cfgDifficultyCoefficient,
+                cfgDifficultyRatioLow,
+                cfgDifficultyRatioHigh,
+                cfgSupportPricePerG,
+                cfgUsePrusaSlicer,
                 cfgUnitCostFormula,
                 cfgTotalCostFormula,
             ].forEach((el) => el.addEventListener('change', syncPricingFromInputs));
@@ -1521,6 +1875,7 @@
             logoutBtn.addEventListener('click', () => {
                 currentUser = null;
                 authToken = "";
+                quoteOptions.slicer_preset_id = null;
                 clearUserSession();
                 renderAuthUI();
                 userDropdown.classList.add('hidden');
@@ -1676,6 +2031,9 @@
                 formData.append("material", quoteOptions.material);
                 formData.append("color", quoteOptions.color);
                 formData.append("quantity", String(quoteOptions.quantity));
+                if (quoteOptions.slicer_preset_id) {
+                    formData.append("slicer_preset_id", String(quoteOptions.slicer_preset_id));
+                }
 
                 const response = await authFetch('/api/quote', {
                     method: 'POST',
@@ -1757,7 +2115,7 @@
                             <td class="px-2 py-1.5"><input data-field="quantity" type="number" min="1" value="${item.quantity}" class="row-edit w-14 text-[11px] border border-gray-300 rounded px-1 py-0.5" /></td>
                             <td class="px-2 py-1.5 text-[10px] leading-tight">${geometryText}</td>
                             <td class="px-2 py-1.5">${item.weight_g}</td>
-                            <td class="px-2 py-1.5">${item.estimated_time_h}</td>
+                            <td class="px-2 py-1.5">${formatTimeHMS(item.estimated_time_h)}</td>
                             <td class="px-2 py-1.5">¥ ${item.unit_cost_cny}</td>
                             <td class="px-2 py-1.5">¥ ${item.cost_cny}</td>
                             <td data-role="status-cell" class="px-2 py-1.5 text-green-600">成功</td>
@@ -1893,6 +2251,7 @@
                     const user = await response.json();
                     currentUser = user;
                     saveUserSession();
+                    loadSlicerPresetSelection();
                     await fetchUserSettings();
                 } catch (e) {
                     currentUser = null;
