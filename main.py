@@ -2688,7 +2688,25 @@ def update_user_settings(payload: UserSettingsUpdate, request: Request, current_
 @app.get("/api/slicer/presets")
 def api_list_slicer_presets(current_user=Depends(get_current_user)):
     items = list_slicer_presets(int(current_user["id"]))
-    return {"items": items}
+    
+    # 验证物理文件是否存在，如果不存在则从返回列表中剔除（并静默从数据库中清理以保持同步）
+    user_folder = f"user_{current_user['id']}_{current_user['username']}"
+    user_configs_dir = os.path.join(_user_base_dir(), user_folder, "configs")
+    
+    valid_items = []
+    for item in items:
+        safe_preset_name = _sanitize_filename_component(item["name"], fallback="preset", max_len=60)
+        config_saved_path = os.path.join(user_configs_dir, f"{safe_preset_name}{item['ext']}")
+        if os.path.exists(config_saved_path):
+            valid_items.append(item)
+        else:
+            # 物理文件已丢失，同步清理数据库
+            try:
+                delete_slicer_preset(int(current_user["id"]), int(item["id"]))
+            except Exception:
+                pass
+
+    return {"items": valid_items}
 
 
 @app.post("/api/slicer/presets")
