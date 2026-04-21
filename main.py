@@ -185,6 +185,9 @@ def _sanitize_filename_component(value: str, fallback: str, max_len: int = 120) 
     return cleaned or fallback
 
 
+def _user_base_dir() -> str:
+    return _ensure_dir(os.getenv("USER_DATA_DIR", "user").strip() or "user")
+
 def _ensure_dir(path: str) -> str:
     p = str(path or "").strip() or "."
     os.makedirs(p, exist_ok=True)
@@ -2069,8 +2072,8 @@ def calculate_cost(
             base_name = os.path.splitext(os.path.basename(model_path))[0]
             output_prefix = _sanitize_filename_component(base_name, fallback="model", max_len=60)
             user_folder = f"user_{current_user['id']}_{current_user['username']}" if current_user else "anonymous"
-            # 结构: outputs/user_1_admin/20260421/8f3c..._model/
-            outputs_job_dir = os.path.join(_outputs_base_dir(), user_folder, _date_folder_utc(), output_prefix)
+            # 结构: user/user_1_admin/outputs/20260421/8f3c..._model/
+            outputs_job_dir = os.path.join(_user_base_dir(), user_folder, "outputs", _date_folder_utc(), output_prefix)
             os.makedirs(outputs_job_dir, exist_ok=True)
             
             extra_loads: list[str] = []
@@ -2254,8 +2257,8 @@ async def process_single_file(
         job_id = uuid.uuid4().hex
         
         user_folder = f"user_{current_user['id']}_{current_user['username']}" if current_user else "anonymous"
-        # 结构: uploads/user_1_admin/20260421/8f3c..._model/8f3c..._model.stl
-        uploads_day_dir = os.path.join(_uploads_base_dir(), user_folder, _date_folder_utc(), f"{job_id}_{safe_stem}")
+        # 结构: user/user_1_admin/uploads/20260421/8f3c..._model/8f3c..._model.stl
+        uploads_day_dir = os.path.join(_user_base_dir(), user_folder, "uploads", _date_folder_utc(), f"{job_id}_{safe_stem}")
         os.makedirs(uploads_day_dir, exist_ok=True)
         
         saved_name = f"{job_id}_{safe_stem}{ext}"
@@ -2705,8 +2708,8 @@ async def api_upsert_slicer_preset(
     
     # 将配置持久化到用户的 configs 目录下
     user_folder = f"user_{current_user['id']}_{current_user['username']}"
-    # 结构: configs/user_1_admin/xxx.ini
-    user_configs_dir = os.path.join(_configs_base_dir(), user_folder)
+    # 结构: user/user_1_admin/configs/xxx.ini
+    user_configs_dir = os.path.join(_user_base_dir(), user_folder, "configs")
     os.makedirs(user_configs_dir, exist_ok=True)
     safe_preset_name = _sanitize_filename_component(preset_name, fallback="preset", max_len=60)
     config_saved_path = os.path.join(user_configs_dir, f"{safe_preset_name}{ext}")
@@ -2725,9 +2728,25 @@ async def api_upsert_slicer_preset(
 
 @app.delete("/api/slicer/presets/{preset_id}")
 def api_delete_slicer_preset(preset_id: int, request: Request, current_user=Depends(get_current_user)):
+    preset = get_slicer_preset_by_id(int(current_user["id"]), int(preset_id))
+    if not preset:
+        raise HTTPException(status_code=404, detail="预设不存在或无权限")
+    
     ok = delete_slicer_preset(int(current_user["id"]), int(preset_id))
     if not ok:
         raise HTTPException(status_code=404, detail="预设不存在或无权限")
+        
+    # 同时删除文件系统上的实体配置文件
+    try:
+        user_folder = f"user_{current_user['id']}_{current_user['username']}"
+        user_configs_dir = os.path.join(_user_base_dir(), user_folder, "configs")
+        safe_preset_name = _sanitize_filename_component(preset["name"], fallback="preset", max_len=60)
+        config_saved_path = os.path.join(user_configs_dir, f"{safe_preset_name}{preset['ext']}")
+        if os.path.exists(config_saved_path):
+            os.remove(config_saved_path)
+    except Exception as e:
+        logger.error(f"删除预设文件实体失败: {e}")
+
     write_audit_event(
         action="slicer.preset.delete",
         request=request,

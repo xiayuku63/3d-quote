@@ -2265,6 +2265,15 @@
             initializeAuth();
             refreshOptionsSummary();
 
+            // 防刷新拦截
+            window.addEventListener('beforeunload', (event) => {
+                if (selectedFilesMap.size > 0) {
+                    event.preventDefault();
+                    // 现代浏览器通常忽略此字符串，但必须赋值才能触发原生弹窗
+                    event.returnValue = '您有未保存的文件，确定要离开吗？';
+                }
+            });
+
             // 上传后自动报价，不再需要手动提交
         });
     </script>
