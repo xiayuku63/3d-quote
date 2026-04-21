@@ -2063,11 +2063,13 @@ def calculate_cost(
     if use_prusaslicer and model_path and os.path.exists(model_path):
         preset_tmp_path = None
         try:
-            user_folder = f"user_{current_user['id']}_{current_user['username']}" if current_user else "anonymous"
-            outputs_job_dir = os.path.join(_outputs_base_dir(), user_folder, _date_folder_utc(), uuid.uuid4().hex)
-            os.makedirs(outputs_job_dir, exist_ok=True)
             base_name = os.path.splitext(os.path.basename(model_path))[0]
             output_prefix = _sanitize_filename_component(base_name, fallback="model", max_len=60)
+            user_folder = f"user_{current_user['id']}_{current_user['username']}" if current_user else "anonymous"
+            # 结构: outputs/user_1_admin/20260421/8f3c..._model/
+            outputs_job_dir = os.path.join(_outputs_base_dir(), user_folder, _date_folder_utc(), output_prefix)
+            os.makedirs(outputs_job_dir, exist_ok=True)
+            
             extra_loads: list[str] = []
             extra_sets = _prusaslicer_sets_from_quote_params(layer_height_mm, infill_percent, perimeters)
             if slicer_preset and isinstance(slicer_preset, dict) and slicer_preset.get("content"):
@@ -2249,7 +2251,8 @@ async def process_single_file(
         job_id = uuid.uuid4().hex
         
         user_folder = f"user_{current_user['id']}_{current_user['username']}" if current_user else "anonymous"
-        uploads_day_dir = os.path.join(_uploads_base_dir(), user_folder, _date_folder_utc())
+        # 结构: uploads/user_1_admin/20260421/8f3c..._model/8f3c..._model.stl
+        uploads_day_dir = os.path.join(_uploads_base_dir(), user_folder, _date_folder_utc(), f"{job_id}_{safe_stem}")
         os.makedirs(uploads_day_dir, exist_ok=True)
         
         saved_name = f"{job_id}_{safe_stem}{ext}"
