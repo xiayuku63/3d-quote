@@ -4,7 +4,7 @@ import sqlite3
 import base64
 import tempfile
 import trimesh
-from main import run_prusaslicer_slice, prusaslicer_support_diff_stats, parse_prusaslicer_gcode_stats
+from main import run_curaengine_slice, curaengine_support_diff_stats, parse_curaengine_gcode_stats
 
 def main():
     print("=== 开始端到端切片和 G-code 读取测试 ===")
@@ -38,9 +38,9 @@ def main():
     print("\n3. 准备切片参数...")
     extra_loads = [preset_path] if preset_path else []
     extra_sets = {
-        '--layer-height': '0.15',
-        '--fill-density': '15%',
-        '--perimeters': '2'
+        'layer_height': '0.15',
+        'infill_sparse_density': '15',
+        'wall_line_count': '2'
     }
     print(f"   加载文件: {extra_loads}")
     print(f"   额外参数: {extra_sets}")
@@ -48,17 +48,17 @@ def main():
     # 4. 执行普通切片测试 (不带支撑)
     print("\n4. 执行普通切片测试 (不带支撑)...")
     gcode_path = "test_integration_output.gcode"
-    extra_sets_no_support = {**extra_sets, '--support-material': '0', '--support-material-auto': '0'}
+    extra_sets_no_support = {**extra_sets, 'support_enable': 'false'}
     try:
-        st = run_prusaslicer_slice(stl_path, gcode_path, extra_loads=extra_loads, extra_sets=extra_sets_no_support)
+        st = run_curaengine_slice(stl_path, gcode_path, extra_loads=extra_loads, extra_sets=extra_sets_no_support)
         print(f"   切片成功！返回统计数据: {st}")
         
         # 验证 G-code 是否存在
         if os.path.exists(gcode_path):
             print(f"   G-code 文件 {gcode_path} 生成成功。文件大小: {os.path.getsize(gcode_path)} bytes")
             
-            # 手动调用 parse_prusaslicer_gcode_stats 验证解析
-            parsed_st = parse_prusaslicer_gcode_stats(gcode_path)
+            # 手动调用 parse_curaengine_gcode_stats 验证解析
+            parsed_st = parse_curaengine_gcode_stats(gcode_path)
             print(f"   再次从文件解析的统计数据: {parsed_st}")
             
             if parsed_st.get("estimated_time_s"):

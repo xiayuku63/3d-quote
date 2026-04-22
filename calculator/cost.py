@@ -10,7 +10,7 @@ import hashlib
 from typing import List, Optional
 from fastapi import UploadFile, Request
 
-from parser.slicer import run_prusaslicer_slice, prusaslicer_support_diff_stats
+from parser.slicer import run_curaengine_slice, curaengine_support_diff_stats
 
 def calculate_weight(volume, material_density):
     """Calculate weight (unit: g)"""
@@ -210,25 +210,25 @@ def validate_formula_expression(expr: str) -> tuple[bool, str, list[str]]:
     return True, "", sorted(used_vars)
 
 
-def _prusaslicer_sets_from_quote_params(layer_height_mm: float, infill_percent: int, perimeters: Optional[int]) -> dict[str, str]:
+def _curaengine_sets_from_quote_params(layer_height_mm: float, infill_percent: int, perimeters: Optional[int]) -> dict[str, str]:
     sets: dict[str, str] = {}
     try:
         lh = float(layer_height_mm)
         if lh > 0:
-            sets["--layer-height"] = str(lh)
+            sets["layer_height"] = str(lh)
     except Exception:
         pass
     try:
         inf = int(infill_percent)
         if 0 <= inf <= 100:
-            sets["--fill-density"] = f"{inf}%"
+            sets["infill_sparse_density"] = str(inf)
     except Exception:
         pass
     if perimeters is not None:
         try:
             p = int(perimeters)
             if 1 <= p <= 20:
-                sets["--perimeters"] = str(p)
+                sets["wall_line_count"] = str(p)
         except Exception:
             pass
     return sets
@@ -287,19 +287,19 @@ def calculate_cost(
     difficulty_multiplier = 1.0 + (difficulty_coefficient * difficulty_score)
     difficulty_markup_percent = max(0.0, (difficulty_multiplier - 1.0) * 100.0)
 
-    raw_use = cfg.get("use_prusaslicer")
-    use_prusaslicer = False
+    raw_use = cfg.get("use_curaengine") or cfg.get("use_prusaslicer") # fallback to old key if any
+    use_curaengine = False
     if isinstance(raw_use, (int, float)):
-        use_prusaslicer = bool(int(raw_use))
+        use_curaengine = bool(int(raw_use))
     else:
-        use_prusaslicer = str(raw_use or "").strip().lower() in {"1", "true", "yes", "y", "on"}
-    prusaslicer_support_mode = str(cfg.get("prusaslicer_support_mode") or "diff").strip().lower() or "diff"
+        use_curaengine = str(raw_use or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+    curaengine_support_mode = str(cfg.get("curaengine_support_mode") or cfg.get("prusaslicer_support_mode") or "diff").strip().lower() or "diff"
     support_weight_g_per_part = 0.0
     slicer_time_s = None
     slicer_filament_g_per_part = None
     preset_used = None
-    prusaslicer_error_msg = None
-    if use_prusaslicer and model_path and os.path.exists(model_path):
+    curaengine_error_msg = None
+    if use_curaengine and model_path and os.path.exists(model_path):
         preset_tmp_path = None
         try:
             base_name = os.path.splitext(os.path.basename(model_path))[0]
@@ -310,12 +310,12 @@ def calculate_cost(
             os.makedirs(outputs_job_dir, exist_ok=True)
             
             extra_loads: list[str] = []
-            extra_sets = _prusaslicer_sets_from_quote_params(layer_height_mm, infill_percent, perimeters)
+            extra_sets = _curaengine_sets_from_quote_params(layer_height_mm, infill_percent, perimeters)
             if slicer_preset and isinstance(slicer_preset, dict) and slicer_preset.get("content"):
                 try:
                     ext = str(slicer_preset.get("ext") or ".ini").strip().lower()
-                    if ext not in {".ini", ".cfg"}:
-                        ext = ".ini"
+                    if ext not in {".ini", ".cfg", ".json"}:
+                        ext = ".cfg"
                     with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tf:
                         tf.write(bytes(slicer_preset.get("content")))
                         preset_tmp_path = tf.name
@@ -323,8 +323,8 @@ def calculate_cost(
                     preset_used = str(slicer_preset.get("name") or "") or None
                 except Exception:
                     preset_tmp_path = None
-            if prusaslicer_support_mode == "diff":
-                st = prusaslicer_support_diff_stats(
+            if curaengine_support_mode == "diff":
+                st = curaengine_support_diff_stats(
                     model_path,
                     extra_loads=extra_loads,
                     extra_sets=extra_sets,
@@ -340,7 +340,7 @@ def calculate_cost(
                         slicer_filament_g_per_part = None
             else:
                 gcode_path = os.path.join(outputs_job_dir, f"{output_prefix}.gcode")
-                st = run_prusaslicer_slice(model_path, gcode_path, extra_loads=extra_loads, extra_sets=extra_sets)
+                st = run_curaengine_slice(model_path, gcode_path, extra_loads=extra_loads, extra_sets=extra_sets)
                 slicer_time_s = int(st.get("estimated_time_s")) if st.get("estimated_time_s") is not None else None
                 if st.get("filament_g") is not None:
                     try:
@@ -348,12 +348,12 @@ def calculate_cost(
                     except Exception:
                         slicer_filament_g_per_part = None
         except Exception as e:
-            logger.error(f"PrusaSlicer failed for {model_path}: {e}")
+            logger.error(f"CuraEngine failed for {model_path}: {e}")
             support_weight_g_per_part = 0.0
             slicer_time_s = None
             slicer_filament_g_per_part = None
             preset_used = None
-            prusaslicer_error_msg = str(e)
+            curaengine_error_msg = str(e)
         finally:
             try:
                 if preset_tmp_path and os.path.exists(preset_tmp_path):
@@ -437,12 +437,12 @@ def calculate_cost(
         "support_weight_g_per_part": round(support_weight_g_per_part, 3),
         "support_price_per_g": round(support_price_per_g, 4),
         "support_cost_per_part_cny": round(support_cost_per_part_cny, 2),
-        "prusaslicer_used": bool(use_prusaslicer and slicer_time_s is not None),
-        "prusaslicer_error": prusaslicer_error_msg,
-        "prusaslicer_filament_g_per_part": round(float(slicer_filament_g_per_part), 3) if slicer_filament_g_per_part is not None else None,
-        "prusaslicer_preset_used": preset_used,
-        "prusaslicer_sets": _prusaslicer_sets_from_quote_params(layer_height_mm, infill_percent, perimeters) if use_prusaslicer else {},
-        "prusaslicer_estimated_time_s": int(slicer_time_s) if slicer_time_s is not None else None,
+        "curaengine_used": bool(use_curaengine and slicer_time_s is not None),
+        "curaengine_error": curaengine_error_msg,
+        "curaengine_filament_g_per_part": round(float(slicer_filament_g_per_part), 3) if slicer_filament_g_per_part is not None else None,
+        "curaengine_preset_used": preset_used,
+        "curaengine_sets": _curaengine_sets_from_quote_params(layer_height_mm, infill_percent, perimeters) if use_curaengine else {},
+        "curaengine_estimated_time_s": int(slicer_time_s) if slicer_time_s is not None else None,
         "setup_fee_cny": round(setup_fee, 2),
         "min_job_fee_cny": round(min_job_fee, 2),
         "subtotal_cny": round(subtotal, 2),
@@ -525,7 +525,7 @@ async def process_single_file(
         try:
             filament_g = None
             if isinstance(breakdown, dict):
-                filament_g = breakdown.get("prusaslicer_filament_g_per_part")
+                filament_g = breakdown.get("curaengine_filament_g_per_part")
             if filament_g is not None:
                 total_weight = round(float(filament_g) * quantity, 2)
         except Exception:

@@ -17,6 +17,7 @@ app.db
 uploads/
 outputs/
 PrusaSlicer*/
+CuraEngine*/
 *.zip
 
 # Logs

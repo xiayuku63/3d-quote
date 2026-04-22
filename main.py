@@ -1187,8 +1187,8 @@ def upsert_slicer_preset(user_id: int, name: str, ext: str, content: bytes) -> d
         raise HTTPException(status_code=401, detail="未登录")
     preset_name = _normalize_slicer_preset_name(name)
     safe_ext = (ext or "").strip().lower()
-    if safe_ext not in {".ini", ".cfg"}:
-        raise HTTPException(status_code=400, detail="预设文件格式不支持（仅支持 .ini/.cfg）")
+    if safe_ext not in {".ini", ".cfg", ".json"}:
+        raise HTTPException(status_code=400, detail="预设文件格式不支持（仅支持 .cfg/.json/.ini）")
     raw = bytes(content or b"")
     if not raw or len(raw) > 2 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="预设文件内容不能为空且必须小于 2MB")
@@ -1535,7 +1535,7 @@ def record_login_failure(identifier: str) -> tuple[bool, int]:
 from parser.geometry import calculate_geometry
 
 
-from parser.slicer import parse_prusaslicer_gcode_stats, prusaslicer_executable, run_prusaslicer_slice, prusaslicer_support_diff_stats
+from parser.slicer import parse_curaengine_gcode_stats, curaengine_executable, run_curaengine_slice, curaengine_support_diff_stats
 
 from calculator.cost import calculate_weight, merge_pricing_config, estimate_print_time_hours, safe_eval_formula, with_formula_aliases, validate_formula_expression, calculate_cost
 
@@ -1924,7 +1924,7 @@ async def api_upsert_slicer_preset(
     filename = file.filename or ""
     ext = os.path.splitext(filename)[1].strip().lower()
     if not ext:
-        ext = ".ini"
+        ext = ".cfg"
     raw = await file.read()
     inferred_name = os.path.splitext(os.path.basename(filename))[0].strip()
     preset_name = (name or "").strip() or inferred_name or "preset"

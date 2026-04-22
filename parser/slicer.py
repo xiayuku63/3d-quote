@@ -33,7 +33,7 @@ def _parse_hms_to_seconds(text: str) -> Optional[int]:
     return total
 
 
-def parse_prusaslicer_gcode_stats(gcode_path: str) -> dict:
+def parse_curaengine_gcode_stats(gcode_path: str) -> dict:
     out = {"estimated_time_s": None, "filament_g": None, "filament_mm": None}
     try:
         import os
@@ -51,59 +51,69 @@ def parse_prusaslicer_gcode_stats(gcode_path: str) -> dict:
         s = line.strip()
         if not s.startswith(";"):
             continue
-        m = re.search(r"filament used\s*\[g\]\s*=\s*([0-9]+(?:\.[0-9]+)?)", s, flags=re.I)
+        
+        # Cura output format:
+        # ;TIME:4523
+        # ;Filament used: 3.456m
+        # ;MINX: ... (and other stats)
+        
+        m = re.search(r"TIME:\s*([0-9]+)", s, flags=re.I)
+        if m and out["estimated_time_s"] is None:
+            try:
+                out["estimated_time_s"] = int(m.group(1))
+            except Exception:
+                pass
+                
+        m = re.search(r"Filament used:\s*([0-9]+(?:\.[0-9]+)?)\s*m", s, flags=re.I)
+        if m and out["filament_mm"] is None:
+            try:
+                # Cura typically outputs in meters, so multiply by 1000 for mm
+                out["filament_mm"] = float(m.group(1)) * 1000.0
+                # Approximate weight (assuming 1.75mm PLA with density 1.24g/cm^3)
+                # Volume in cm^3 = pi * r^2 * h = 3.14159 * (0.175/2)^2 * (length in cm)
+                # Usually Cura also prints weight if configured, but let's just rely on mm for now if weight isn't found
+            except Exception:
+                pass
+                
+        # Some Cura versions might print weight
+        m = re.search(r"Filament weight:\s*([0-9]+(?:\.[0-9]+)?)\s*g", s, flags=re.I)
         if m and out["filament_g"] is None:
             try:
                 out["filament_g"] = float(m.group(1))
             except Exception:
                 pass
-        m = re.search(r"filament used\s*\[mm\]\s*=\s*([0-9]+(?:\.[0-9]+)?)", s, flags=re.I)
-        if m and out["filament_mm"] is None:
-            try:
-                out["filament_mm"] = float(m.group(1))
-            except Exception:
-                pass
-        m = re.search(r"estimated printing time.*=\s*(.+)$", s, flags=re.I)
-        if m and out["estimated_time_s"] is None:
-            sec = _parse_hms_to_seconds(m.group(1))
-            if sec is not None:
-                out["estimated_time_s"] = int(sec)
 
-    if out["estimated_time_s"] is None:
-        for line in lines:
-            s = line.strip()
-            if not s.startswith(";"):
-                continue
-            m = re.search(r"\bTIME\s*:\s*([0-9]+)\b", s, flags=re.I)
-            if m:
-                try:
-                    out["estimated_time_s"] = int(m.group(1))
-                    break
-                except Exception:
-                    pass
+    # If weight is not provided but mm is, we approximate it (assume 1.75mm filament, 1.24 density)
+    if out["filament_g"] is None and out["filament_mm"] is not None:
+        radius_cm = 1.75 / 20.0
+        length_cm = out["filament_mm"] / 10.0
+        volume_cm3 = 3.14159265 * (radius_cm ** 2) * length_cm
+        out["filament_g"] = volume_cm3 * 1.24  # default PLA density approximation
+
     return out
 
 
-def prusaslicer_executable() -> Optional[str]:
+def curaengine_executable() -> Optional[str]:
     candidates = []
-    env_path = os.getenv("PRUSASLICER_PATH", "").strip()
+    env_path = os.getenv("CURAENGINE_PATH", "").strip()
     if env_path:
         candidates.append(env_path)
-    candidates.extend(_env_csv("PRUSASLICER_PATH_CANDIDATES"))
+    candidates.extend(_env_csv("CURAENGINE_PATH_CANDIDATES"))
     
-    # 优先查找本地便携版 PrusaSlicer
-    local_portable = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(__file__)), "PrusaSlicer", "PrusaSlicer-2.9.4", "prusa-slicer-console.exe"))
+    # 优先查找本地便携版 CuraEngine
+    local_portable = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(__file__)), "CuraEngine", "CuraEngine.exe"))
     candidates.append(local_portable)
+
+    # Linux common path
+    candidates.append("/usr/bin/CuraEngine")
+    candidates.append("/usr/local/bin/CuraEngine")
 
     # 常见 Windows 路径
     windir = os.environ.get("ProgramFiles", "C:\\Program Files")
-    windir_x86 = os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)")
     candidates.extend(
         [
-            os.path.join(windir, "Prusa3D", "PrusaSlicer", "prusa-slicer-console.exe"),
-            os.path.join(windir, "Prusa3D", "PrusaSlicer", "prusa-slicer.exe"),
-            os.path.join(windir_x86, "Prusa3D", "PrusaSlicer", "prusa-slicer-console.exe"),
-            os.path.join(windir_x86, "Prusa3D", "PrusaSlicer", "prusa-slicer.exe"),
+            os.path.join(windir, "UltiMaker Cura", "CuraEngine.exe"),
+            os.path.join(windir, "Cura", "CuraEngine.exe"),
         ]
     )
     for p in candidates:
@@ -115,51 +125,58 @@ def prusaslicer_executable() -> Optional[str]:
     return None
 
 
-def run_prusaslicer_slice(
+def run_curaengine_slice(
     model_path: str,
     output_gcode_path: str,
     extra_loads: Optional[list[str]] = None,
     extra_sets: Optional[dict[str, str]] = None,
 ) -> dict:
-    exe = prusaslicer_executable()
+    exe = curaengine_executable()
     if not exe:
-        raise RuntimeError("未配置 PRUSASLICER_PATH")
+        raise RuntimeError("未配置 CURAENGINE_PATH (找不到 CuraEngine)")
     out_dir = os.path.dirname(str(output_gcode_path or "").strip())
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
+        
+    cmd = [exe, "slice"]
+    
+    # CuraEngine 需要一个 base definition json 文件，比如 fdmprinter.def.json
+    def_json = os.getenv("CURAENGINE_DEF_JSON")
+    if def_json and os.path.exists(def_json):
+        cmd.extend(["-j", def_json])
+    
     loads = []
-    loads.extend(_env_csv("PRUSASLICER_LOAD_FILES"))
+    loads.extend(_env_csv("CURAENGINE_LOAD_FILES"))
     if extra_loads:
         loads.extend([x for x in extra_loads if x])
-    cmd = []
-    # 如果是 Linux 环境且未配置 DISPLAY，则使用 xvfb-run 避免缺少 X11 的报错
-    if os.name == "posix" and not os.environ.get("DISPLAY"):
-        cmd.extend(["xvfb-run", "-a"])
-    cmd.extend([exe, "--export-gcode", "--output", output_gcode_path])
+        
+    # Cura uses `-j` for definitions and `-s` for settings
     for cfg in loads:
         if os.path.exists(cfg):
-            cmd.extend(["--load", cfg])
+            # 简化处理：暂时假设用户传的是 Cura 识别的 profile/def
+            # 由于实际 Cura 的命令行系统比较挑剔，可能需要视文件扩展名区分
+            cmd.extend(["-j", cfg])
+
     if extra_sets:
         for k, v in extra_sets.items():
-            if str(k).startswith("--"):
-                flag = k
-            else:
-                flag = f"--{k.replace('_', '-')}"
-            if v == "":
-                cmd.append(flag)
-            else:
-                cmd.append(f"{flag}={v}")
-    cmd.append(model_path)
-    timeout_s = float(os.getenv("PRUSASLICER_TIMEOUT_SECONDS", "90") or "90")
+            # CuraEngine 命令行传入 setting 格式为 `-s key=value`
+            # 将旧的 --layer-height 风格转换为 layer_height 风格
+            key = k.lstrip("-").replace("-", "_")
+            cmd.extend(["-s", f"{key}={v}"])
+
+    cmd.extend(["-l", model_path, "-o", output_gcode_path])
+    
+    timeout_s = float(os.getenv("CURAENGINE_TIMEOUT_SECONDS", "90") or "90")
     res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
     if res.returncode != 0:
         err = (res.stderr or res.stdout or "").strip()
-        raise RuntimeError(f"PrusaSlicer 切片失败：{err[:300]}")
-    stats = parse_prusaslicer_gcode_stats(output_gcode_path)
+        raise RuntimeError(f"CuraEngine 切片失败：{err[:300]}")
+        
+    stats = parse_curaengine_gcode_stats(output_gcode_path)
     return stats
 
 
-def prusaslicer_support_diff_stats(
+def curaengine_support_diff_stats(
     model_path: str,
     extra_loads: Optional[list[str]] = None,
     extra_sets: Optional[dict[str, str]] = None,
@@ -168,32 +185,34 @@ def prusaslicer_support_diff_stats(
 ) -> dict:
     base_dir = str(output_dir or "").strip()
     if not base_dir:
+        import uuid
+        from main import _outputs_base_dir, _date_folder_utc
         base_dir = os.path.join(_outputs_base_dir(), _date_folder_utc(), uuid.uuid4().hex)
     os.makedirs(base_dir, exist_ok=True)
+    
+    from main import _sanitize_filename_component
     prefix = _sanitize_filename_component(output_prefix, fallback="", max_len=50)
     if prefix and not prefix.endswith("_"):
         prefix = prefix + "_"
+        
     g_on = os.path.join(base_dir, f"{prefix}with_support.gcode")
     g_off = os.path.join(base_dir, f"{prefix}no_support.gcode")
-    load_on = _env_csv("PRUSASLICER_LOAD_FILES_SUPPORT_ON")
-    load_off = _env_csv("PRUSASLICER_LOAD_FILES_SUPPORT_OFF")
-    if load_on and load_off:
-        st_on = run_prusaslicer_slice(model_path, g_on, extra_loads=(list(load_on) + list(extra_loads or [])), extra_sets=dict(extra_sets or {}))
-        st_off = run_prusaslicer_slice(model_path, g_off, extra_loads=(list(load_off) + list(extra_loads or [])), extra_sets=dict(extra_sets or {}))
-    else:
-        base_sets = dict(extra_sets or {})
-        st_on = run_prusaslicer_slice(
-            model_path,
-            g_on,
-            extra_loads=extra_loads,
-            extra_sets={**base_sets, "--support-material": "1", "--support-material-auto": "1"},
-        )
-        st_off = run_prusaslicer_slice(
-            model_path,
-            g_off,
-            extra_loads=extra_loads,
-            extra_sets={**base_sets, "--support-material": "0", "--support-material-auto": "0"},
-        )
+    
+    base_sets = dict(extra_sets or {})
+    # CuraEngine support setting keys: support_enable=true
+    st_on = run_curaengine_slice(
+        model_path,
+        g_on,
+        extra_loads=extra_loads,
+        extra_sets={**base_sets, "support_enable": "true", "support_type": "buildplate"},
+    )
+    st_off = run_curaengine_slice(
+        model_path,
+        g_off,
+        extra_loads=extra_loads,
+        extra_sets={**base_sets, "support_enable": "false"},
+    )
+    
     out = {"with_support": st_on, "no_support": st_off}
     out["output_dir"] = base_dir
     out["gcode_with_support"] = g_on
