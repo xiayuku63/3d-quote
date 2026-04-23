@@ -1535,7 +1535,7 @@ def record_login_failure(identifier: str) -> tuple[bool, int]:
 from parser.geometry import calculate_geometry
 
 
-from parser.slicer import parse_curaengine_gcode_stats, curaengine_executable, run_curaengine_slice, curaengine_support_diff_stats
+from parser.slicer import parse_kirimoto_gcode_stats, kirimoto_executable, run_kirimoto_slice, kirimoto_support_diff_stats
 
 from calculator.cost import calculate_weight, merge_pricing_config, estimate_print_time_hours, safe_eval_formula, with_formula_aliases, validate_formula_expression, calculate_cost
 

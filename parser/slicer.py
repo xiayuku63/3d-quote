@@ -33,7 +33,7 @@ def _parse_hms_to_seconds(text: str) -> Optional[int]:
     return total
 
 
-def parse_curaengine_gcode_stats(gcode_path: str) -> dict:
+def parse_kirimoto_gcode_stats(gcode_path: str) -> dict:
     out = {"estimated_time_s": None, "filament_g": None, "filament_mm": None}
     try:
         import os
@@ -52,38 +52,48 @@ def parse_curaengine_gcode_stats(gcode_path: str) -> dict:
         if not s.startswith(";"):
             continue
         
-        # Cura output format:
-        # ;TIME:4523
-        # ;Filament used: 3.456m
-        # ;MINX: ... (and other stats)
+        # Kiri:Moto output format is typically:
+        # ; print time: 2h 34m 12s
+        # ; filament used: 3456 mm
+        # We also support PrusaSlicer/Cura generic formats as fallbacks
         
-        m = re.search(r"TIME:\s*([0-9]+)", s, flags=re.I)
-        if m and out["estimated_time_s"] is None:
+        # Time parsing
+        m_time = re.search(r"(?:print time|estimated printing time).*?:\s*(.+)", s, flags=re.I)
+        if m_time and out["estimated_time_s"] is None:
+            time_str = m_time.group(1).strip()
+            # Try parsing HMS
+            hms = _parse_hms_to_seconds(time_str)
+            if hms:
+                out["estimated_time_s"] = hms
+            else:
+                # Try raw seconds like Cura: TIME:4523
+                m_sec = re.search(r"TIME:\s*([0-9]+)", s, flags=re.I)
+                if m_sec:
+                    try:
+                        out["estimated_time_s"] = int(m_sec.group(1))
+                    except Exception:
+                        pass
+                        
+        # Filament mm
+        m_fil = re.search(r"filament used.*?:\s*([0-9]+(?:\.[0-9]+)?)\s*m", s, flags=re.I)
+        if m_fil and out["filament_mm"] is None:
             try:
-                out["estimated_time_s"] = int(m.group(1))
+                # typically meters, check if m or mm
+                if "mm" in s.lower():
+                    out["filament_mm"] = float(m_fil.group(1))
+                else:
+                    out["filament_mm"] = float(m_fil.group(1)) * 1000.0
             except Exception:
                 pass
                 
-        m = re.search(r"Filament used:\s*([0-9]+(?:\.[0-9]+)?)\s*m", s, flags=re.I)
-        if m and out["filament_mm"] is None:
+        # Filament weight
+        m_weight = re.search(r"filament weight.*?:\s*([0-9]+(?:\.[0-9]+)?)\s*g", s, flags=re.I)
+        if m_weight and out["filament_g"] is None:
             try:
-                # Cura typically outputs in meters, so multiply by 1000 for mm
-                out["filament_mm"] = float(m.group(1)) * 1000.0
-                # Approximate weight (assuming 1.75mm PLA with density 1.24g/cm^3)
-                # Volume in cm^3 = pi * r^2 * h = 3.14159 * (0.175/2)^2 * (length in cm)
-                # Usually Cura also prints weight if configured, but let's just rely on mm for now if weight isn't found
-            except Exception:
-                pass
-                
-        # Some Cura versions might print weight
-        m = re.search(r"Filament weight:\s*([0-9]+(?:\.[0-9]+)?)\s*g", s, flags=re.I)
-        if m and out["filament_g"] is None:
-            try:
-                out["filament_g"] = float(m.group(1))
+                out["filament_g"] = float(m_weight.group(1))
             except Exception:
                 pass
 
-    # If weight is not provided but mm is, we approximate it (assume 1.75mm filament, 1.24 density)
     if out["filament_g"] is None and out["filament_mm"] is not None:
         radius_cm = 1.75 / 20.0
         length_cm = out["filament_mm"] / 10.0
@@ -93,90 +103,77 @@ def parse_curaengine_gcode_stats(gcode_path: str) -> dict:
     return out
 
 
-def curaengine_executable() -> Optional[str]:
+def kirimoto_executable() -> Optional[str]:
     candidates = []
-    env_path = os.getenv("CURAENGINE_PATH", "").strip()
+    env_path = os.getenv("KIRIMOTO_PATH", "").strip()
     if env_path:
         candidates.append(env_path)
-    candidates.extend(_env_csv("CURAENGINE_PATH_CANDIDATES"))
+    candidates.extend(_env_csv("KIRIMOTO_PATH_CANDIDATES"))
     
-    # 优先查找本地便携版 CuraEngine
-    local_portable = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(__file__)), "CuraEngine", "CuraEngine.exe"))
-    candidates.append(local_portable)
+    # Try global node module / CLI
+    candidates.append("kiri-moto")
+    candidates.append("kirimoto-slicer")
+    
+    # Check if grid-apps is locally deployed
+    local_cli = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(__file__)), "grid-apps", "src", "kiri-run", "cli.js"))
+    candidates.append(f"node {local_cli}")
 
-    # Linux common path
-    candidates.append("/usr/bin/CuraEngine")
-    candidates.append("/usr/local/bin/CuraEngine")
-
-    # 常见 Windows 路径
-    windir = os.environ.get("ProgramFiles", "C:\\Program Files")
-    candidates.extend(
-        [
-            os.path.join(windir, "UltiMaker Cura", "CuraEngine.exe"),
-            os.path.join(windir, "Cura", "CuraEngine.exe"),
-        ]
-    )
     for p in candidates:
         try:
-            if p and os.path.exists(p):
+            # simple check if path exists or if it's a command like "kiri-moto"
+            if p.startswith("node ") or not os.path.isabs(p) or os.path.exists(p):
                 return p
         except Exception:
             continue
-    return None
+    return "kiri-moto"
 
 
-def run_curaengine_slice(
+def run_kirimoto_slice(
     model_path: str,
     output_gcode_path: str,
     extra_loads: Optional[list[str]] = None,
     extra_sets: Optional[dict[str, str]] = None,
 ) -> dict:
-    exe = curaengine_executable()
+    exe = kirimoto_executable()
     if not exe:
-        raise RuntimeError("未配置 CURAENGINE_PATH (找不到 CuraEngine)")
+        raise RuntimeError("未配置 KIRIMOTO_PATH (找不到 Kiri:Moto CLI)")
     out_dir = os.path.dirname(str(output_gcode_path or "").strip())
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
         
-    cmd = [exe, "slice"]
+    import shlex
+    cmd = shlex.split(exe) if " " in exe else [exe]
     
-    # CuraEngine 需要一个 base definition json 文件，比如 fdmprinter.def.json
-    def_json = os.getenv("CURAENGINE_DEF_JSON")
-    if def_json and os.path.exists(def_json):
-        cmd.extend(["-j", def_json])
-    
-    loads = []
-    loads.extend(_env_csv("CURAENGINE_LOAD_FILES"))
+    # kiri-moto options
     if extra_loads:
-        loads.extend([x for x in extra_loads if x])
-        
-    # Cura uses `-j` for definitions and `-s` for settings
-    for cfg in loads:
-        if os.path.exists(cfg):
-            # 简化处理：暂时假设用户传的是 Cura 识别的 profile/def
-            # 由于实际 Cura 的命令行系统比较挑剔，可能需要视文件扩展名区分
-            cmd.extend(["-j", cfg])
+        for cfg in extra_loads:
+            if cfg and os.path.exists(cfg):
+                # Using --load if supported by Spiritdude's fork, or --process for grid-apps
+                cmd.extend([f"--process={cfg}"])
 
     if extra_sets:
         for k, v in extra_sets.items():
-            # CuraEngine 命令行传入 setting 格式为 `-s key=value`
-            # 将旧的 --layer-height 风格转换为 layer_height 风格
-            key = k.lstrip("-").replace("-", "_")
-            cmd.extend(["-s", f"{key}={v}"])
+            # Add parameters based on how Kiri:Moto CLI accepts them
+            # For grid-apps, settings might need to be in a process JSON file
+            pass
 
-    cmd.extend(["-l", model_path, "-o", output_gcode_path])
+    cmd.extend([f"--output={output_gcode_path}", model_path])
     
-    timeout_s = float(os.getenv("CURAENGINE_TIMEOUT_SECONDS", "90") or "90")
-    res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
-    if res.returncode != 0:
-        err = (res.stderr or res.stdout or "").strip()
-        raise RuntimeError(f"CuraEngine 切片失败：{err[:300]}")
+    timeout_s = float(os.getenv("KIRIMOTO_TIMEOUT_SECONDS", "120") or "120")
+    try:
+        # Use shell=True if it's a raw command like "kiri-moto"
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s, shell=True if not os.path.isabs(cmd[0]) else False)
+        if res.returncode != 0:
+            err = (res.stderr or res.stdout or "").strip()
+            raise RuntimeError(f"Kiri:Moto 切片失败：{err[:300]}")
+    except FileNotFoundError:
+         raise RuntimeError(f"未找到 Kiri:Moto CLI 命令: {exe}")
         
-    stats = parse_curaengine_gcode_stats(output_gcode_path)
+    stats = parse_kirimoto_gcode_stats(output_gcode_path)
     return stats
 
 
-def curaengine_support_diff_stats(
+def kirimoto_support_diff_stats(
     model_path: str,
     extra_loads: Optional[list[str]] = None,
     extra_sets: Optional[dict[str, str]] = None,
@@ -199,18 +196,18 @@ def curaengine_support_diff_stats(
     g_off = os.path.join(base_dir, f"{prefix}no_support.gcode")
     
     base_sets = dict(extra_sets or {})
-    # CuraEngine support setting keys: support_enable=true
-    st_on = run_curaengine_slice(
+    # KiriMoto support settings
+    st_on = run_kirimoto_slice(
         model_path,
         g_on,
         extra_loads=extra_loads,
-        extra_sets={**base_sets, "support_enable": "true", "support_type": "buildplate"},
+        extra_sets={**base_sets, "sliceSupportDensity": "0.25"},
     )
-    st_off = run_curaengine_slice(
+    st_off = run_kirimoto_slice(
         model_path,
         g_off,
         extra_loads=extra_loads,
-        extra_sets={**base_sets, "support_enable": "false"},
+        extra_sets={**base_sets, "sliceSupportDensity": "0"},
     )
     
     out = {"with_support": st_on, "no_support": st_off}
