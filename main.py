@@ -1946,7 +1946,6 @@ class SlicerPresetGenerateRequest(BaseModel):
     bed_depth: float = Field(256.0, ge=50.0, le=1000.0, description="打印机Y轴尺寸(mm)")
     bed_height: float = Field(256.0, ge=50.0, le=1000.0, description="打印机Z轴尺寸(mm)")
     nozzle_size: float = Field(0.4, description="喷嘴大小(mm)")
-    layer_height: float = Field(0.2, description="默认层高(mm)")
     infill: int = Field(20, description="默认填充(%)")
     wall_count: int = Field(3, description="默认墙层数")
 
@@ -1957,10 +1956,6 @@ def api_generate_slicer_preset(payload: SlicerPresetGenerateRequest, request: Re
     if not any(abs(payload.nozzle_size - v) < 0.001 for v in valid_nozzles):
         raise HTTPException(status_code=400, detail="喷嘴大小只允许 0.2, 0.4, 0.6, 0.8")
     
-    valid_layer_heights = [0.08, 0.12, 0.16, 0.20, 0.24, 0.28, 0.40]
-    if not any(abs(payload.layer_height - v) < 0.001 for v in valid_layer_heights):
-        raise HTTPException(status_code=400, detail="层高只允许推荐值 (如 0.12, 0.16, 0.20, 0.24, 0.28)")
-        
     valid_infills = [5, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]
     if payload.infill not in valid_infills:
         raise HTTPException(status_code=400, detail="填充率只允许推荐值 (如 10, 15, 20, 50, 100)")
@@ -1972,27 +1967,33 @@ def api_generate_slicer_preset(payload: SlicerPresetGenerateRequest, request: Re
     preset_name = payload.name.strip()
     ext = ".json"
     
-    preset_data = {
-        "settings": {
-            "device": {
-                "bedWidth": payload.bed_width,
-                "bedDepth": payload.bed_depth,
-                "bedHeight": payload.bed_height,
-                "nozzleSize": payload.nozzle_size,
-                "gcodePre": ["G28", "M104 S220", "M140 S60", "M109 S220", "M190 S60"],
-                "gcodePost": ["M104 S0", "M140 S0", "G28 X0 Y0", "M84"]
-            },
-            "process": {
-                "sliceHeight": payload.layer_height,
-                "sliceFillSparse": payload.infill / 100.0,
-                "sliceShells": payload.wall_count,
-                "sliceFillType": "gyroid",
-                "sliceTopShells": payload.wall_count,
-                "sliceBottomShells": payload.wall_count,
-                "firstSliceHeight": payload.layer_height
-            }
-        }
-    }
+    # 读取 A1 模板文件作为基础
+    template_path = os.path.join(os.path.dirname(__file__), "A1-layer2-0.4mm-PLA.json")
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            preset_data = json.load(f)
+    except Exception as e:
+        logger.error(f"读取切片预设模板失败: {e}")
+        raise HTTPException(status_code=500, detail="读取切片预设模板失败")
+        
+    # 确保 settings 节点存在
+    if "settings" not in preset_data:
+        preset_data["settings"] = {}
+    if "device" not in preset_data["settings"]:
+        preset_data["settings"]["device"] = {}
+    if "process" not in preset_data["settings"]:
+        preset_data["settings"]["process"] = {}
+
+    # 仅覆盖指定的参数，其他参数（包括层高）保持模板默认值
+    preset_data["settings"]["device"]["bedWidth"] = payload.bed_width
+    preset_data["settings"]["device"]["bedDepth"] = payload.bed_depth
+    preset_data["settings"]["device"]["bedHeight"] = payload.bed_height
+    preset_data["settings"]["device"]["nozzleSize"] = payload.nozzle_size
+    
+    preset_data["settings"]["process"]["sliceFillSparse"] = payload.infill / 100.0
+    preset_data["settings"]["process"]["sliceShells"] = payload.wall_count
+    preset_data["settings"]["process"]["sliceTopShells"] = payload.wall_count
+    preset_data["settings"]["process"]["sliceBottomShells"] = payload.wall_count
     
     raw = json.dumps(preset_data, indent=2).encode("utf-8")
     

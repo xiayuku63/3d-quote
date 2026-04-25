@@ -436,18 +436,6 @@
                                             </select>
                                         </div>
                                         <div>
-                                            <label class="block text-xs text-gray-600">层高 (mm)</label>
-                                            <select id="gen-layer-height" class="mt-1 w-full border border-gray-300 bg-white rounded-sm text-xs px-2 py-1">
-                                                <option value="0.08">0.08 (极细)</option>
-                                                <option value="0.12">0.12 (精细)</option>
-                                                <option value="0.16">0.16 (最优)</option>
-                                                <option value="0.20" selected>0.20 (标准)</option>
-                                                <option value="0.24">0.24 (草稿)</option>
-                                                <option value="0.28">0.28 (快速)</option>
-                                                <option value="0.40">0.40 (极快)</option>
-                                            </select>
-                                        </div>
-                                        <div>
                                             <label class="block text-xs text-gray-600">填充率 (%)</label>
                                             <select id="gen-infill" class="mt-1 w-full border border-gray-300 bg-white rounded-sm text-xs px-2 py-1">
                                                 <option value="5">5%</option>
@@ -636,9 +624,8 @@
             const genBedDepth = document.getElementById('gen-bed-depth');
             const genBedHeight = document.getElementById('gen-bed-height');
             const genNozzleSize = document.getElementById('gen-nozzle-size');
-            const genLayerHeight = document.getElementById('gen-layer-height');
-            const genInfill = document.getElementById('gen-infill');
-            const genWallCount = document.getElementById('gen-wall-count');
+    const genInfill = document.getElementById('gen-infill');
+    const genWallCount = document.getElementById('gen-wall-count');
             const slicerPresetGenerateBtn = document.getElementById('slicer-preset-generate-btn');
             
             const selectedFilesMap = new Map();
@@ -983,20 +970,18 @@
                 const bed_depth = Number(genBedDepth.value) || 256;
                 const bed_height = Number(genBedHeight.value) || 256;
                 const nozzle_size = Number(genNozzleSize.value) || 0.4;
-                const layer_height = Number(genLayerHeight.value) || 0.2;
-                const infill = Number(genInfill.value) || 15;
-                const wall_count = Number(genWallCount.value) || 3;
+            const infill = Number(genInfill.value) || 15;
+            const wall_count = Number(genWallCount.value) || 3;
 
-                const payload = {
-                    name,
-                    bed_width,
-                    bed_depth,
-                    bed_height,
-                    nozzle_size,
-                    layer_height,
-                    infill,
-                    wall_count
-                };
+            const payload = {
+                name,
+                bed_width,
+                bed_depth,
+                bed_height,
+                nozzle_size,
+                infill,
+                wall_count
+            };
 
                 try {
                     const resp = await authFetch('/api/slicer/presets/generate', {
