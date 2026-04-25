@@ -413,13 +413,6 @@
                                     </div>
                                 </div>
                                 <div id="uc-tab-slicer" class="uc-tab-pane hidden space-y-6">
-                                    <div class="bg-indigo-50 border border-indigo-100 p-3 rounded-md mb-4">
-                                        <label class="flex items-center gap-2 text-sm text-indigo-900 font-medium cursor-pointer">
-                                            <input id="cfg-use-kirimoto" type="checkbox" class="rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500" />
-                                            <span>使用 Kiri:Moto 切片估时/支撑（服务器需配置 KIRIMOTO_PATH）</span>
-                                        </label>
-                                        <div class="text-[11px] text-indigo-600 mt-1 ml-6">勾选后将默认使用后台切片引擎进行更精准的时间和材料估算。</div>
-                                    </div>
                                     <div>
                                         <div class="flex justify-between items-center mb-2">
                                             <h5 class="text-sm font-medium text-gray-700">切片配置（.cfg/.json 预设）</h5>
@@ -672,7 +665,6 @@
             const cfgDifficultyRatioLow = document.getElementById('cfg-difficulty-ratio-low');
             const cfgDifficultyRatioHigh = document.getElementById('cfg-difficulty-ratio-high');
             const cfgSupportPricePerG = document.getElementById('cfg-support-price-per-g');
-            const cfgUseKiriMoto = document.getElementById('cfg-use-kirimoto');
             const cfgUnitCostFormula = document.getElementById('cfg-unit-cost-formula');
             const cfgTotalCostFormula = document.getElementById('cfg-total-cost-formula');
             const slicerPresetNameInput = document.getElementById('slicer-preset-name');
@@ -717,6 +709,16 @@
                 if (COLOR_KEYS_BY_LABEL[trimmed]) return COLOR_KEYS_BY_LABEL[trimmed];
                 if (COLOR_LABELS[trimmed]) return trimmed;
                 return trimmed;
+            }
+
+            function escapeHtml(value) {
+                const s = String(value ?? "");
+                return s
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#39;");
             }
             const quoteOptions = {
                 material: "PLA",
@@ -1916,7 +1918,6 @@
                 cfgDifficultyRatioLow.value = String(PRICING_CONFIG.difficulty_ratio_low ?? 0.8);
                 cfgDifficultyRatioHigh.value = String(PRICING_CONFIG.difficulty_ratio_high ?? 4.0);
                 cfgSupportPricePerG.value = String(PRICING_CONFIG.support_price_per_g ?? 0);
-                if (cfgUseKiriMoto) cfgUseKiriMoto.checked = !!(Number(PRICING_CONFIG.use_kirimoto) || 0);
                 cfgUnitCostFormula.value = String(PRICING_CONFIG.unit_cost_formula ?? '((effective_weight_g * (price_per_kg / 1000.0)) + (unit_time_h * machine_hourly_rate_cny) + post_process_fee_per_part_cny) * difficulty_multiplier + support_cost_per_part_cny');
                 cfgTotalCostFormula.value = String(PRICING_CONFIG.total_cost_formula ?? 'max((unit_cost_cny * quantity) + setup_fee_cny, min_job_fee_cny)');
                 loadSlicerPresetSelection();
@@ -1936,7 +1937,6 @@
                     difficulty_coefficient: Math.max(0, diffCoeffPercent) / 100.0,
                     difficulty_ratio_low: Number(cfgDifficultyRatioLow.value) || 0,
                     difficulty_ratio_high: Number(cfgDifficultyRatioHigh.value) || 0,
-                    use_kirimoto: cfgUseKiriMoto && cfgUseKiriMoto.checked ? 1 : 0,
                     kirimoto_support_mode: 'diff',
                     support_price_per_g: Number(cfgSupportPricePerG.value) || 0,
                     time_overhead_min: Number(cfgTimeOverheadMin.value) || 0,
@@ -2071,7 +2071,6 @@
                 cfgDifficultyRatioLow,
                 cfgDifficultyRatioHigh,
                 cfgSupportPricePerG,
-                cfgUseKiriMoto,
                 cfgUnitCostFormula,
                 cfgTotalCostFormula,
             ].forEach((el) => el.addEventListener('change', syncPricingFromInputs));
@@ -2392,6 +2391,11 @@
                     if (item.status === 'success') {
                         const breakdown = item && item.cost_breakdown && typeof item.cost_breakdown === 'object' ? item.cost_breakdown : null;
                         const kiriUsed = !!(breakdown && breakdown.kirimoto_used);
+                        const kiriErrorRaw = breakdown && breakdown.kirimoto_error ? String(breakdown.kirimoto_error) : "";
+                        const kiriError = kiriErrorRaw ? escapeHtml(kiriErrorRaw) : "";
+                        const kiriExtraHtml = kiriUsed
+                            ? '<div class="text-[10px] text-indigo-600">Kiri:Moto</div>'
+                            : (kiriError ? `<div class="text-[10px] text-amber-700">Kiri:Moto失败：${kiriError}</div>` : '');
                         const markupPercentRaw = Number(item.difficulty_markup_percent);
                         let markupPercent = Number.isFinite(markupPercentRaw) ? markupPercentRaw : NaN;
                         if (!Number.isFinite(markupPercent)) {
@@ -2444,7 +2448,7 @@
                             <td class="px-2 py-1.5">¥ ${item.cost_cny}</td>
                             <td data-role="status-cell" class="px-2 py-1.5 text-green-600">
                                 <div>成功</div>
-                                ${kiriUsed ? '<div class="text-[10px] text-indigo-600">Kiri:Moto</div>' : ''}
+                                ${kiriExtraHtml}
                             </td>
                             <td class="px-2 py-1.5">
                                 <button type="button" data-delete-file="${item.filename}" class="text-[11px] text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 rounded px-2 py-0.5">删除</button>
@@ -2539,6 +2543,21 @@
                     fileNameDisplay.textContent = `当前列表共 ${selectedFilesMap.size} 个文件，新增 ${newFiles.length} 个文件自动报价失败`;
                 }
             });
+
+            const mainUseKirimoto = document.getElementById('main-use-kirimoto');
+            if (mainUseKirimoto) {
+                mainUseKirimoto.addEventListener('change', async () => {
+                    if (!selectedFilesMap.size) return;
+                    if (!authToken) {
+                        pendingQuoteFiles = Array.from(selectedFilesMap.values());
+                        errorMsg.textContent = '请先登录后再进行切片估算';
+                        errorContainer.classList.remove('hidden');
+                        openLoginModal();
+                        return;
+                    }
+                    await reQuoteAllSelectedFiles(mainUseKirimoto.checked ? '启用Kiri切片估算' : '关闭Kiri切片估算');
+                });
+            }
 
             // 预览区域自适应
             window.addEventListener('resize', () => {
