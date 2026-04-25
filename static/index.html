@@ -24,10 +24,10 @@
                 </div>
                 <div id="auth-area" class="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:justify-end">
                     <button id="open-login-btn" type="button" class="w-full sm:w-auto text-sm px-3 py-1.5 border border-indigo-200 text-indigo-700 rounded-md hover:bg-indigo-50">登录</button>
+                    <button id="open-membership-btn" type="button" class="hidden w-full sm:w-auto text-sm px-3 py-1.5 border border-amber-300 text-amber-700 rounded-md hover:bg-amber-50 font-medium bg-amber-50/50">会员服务</button>
                     <div id="user-menu" class="hidden relative">
                         <button id="user-menu-btn" type="button" class="w-full sm:w-auto text-sm px-3 py-1.5 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"></button>
                         <div id="user-dropdown" class="hidden absolute right-0 mt-2 w-40 rounded-md border border-gray-200 bg-white shadow-lg z-20">
-                            <button id="open-membership-btn" type="button" class="w-full text-left text-xs px-3 py-2 hover:bg-gray-50">会员充值</button>
                             <button id="open-admin-users-btn" type="button" class="hidden w-full text-left text-xs px-3 py-2 hover:bg-gray-50">用户管理</button>
                             <button id="open-user-center-btn" type="button" class="w-full text-left text-xs px-3 py-2 hover:bg-gray-50">用户中心</button>
                             <button id="logout-btn" type="button" class="w-full text-left text-xs px-3 py-2 text-red-600 hover:bg-red-50">退出登录</button>
@@ -241,16 +241,28 @@
             <div id="user-center-modal" class="hidden fixed inset-0 z-50">
                 <div id="user-center-backdrop" class="absolute inset-0 bg-black/50"></div>
                 <div class="relative z-10 h-full w-full flex items-center justify-center p-4">
-                    <div class="w-full max-w-2xl bg-white rounded-lg shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
+                    <div class="w-full max-w-5xl bg-white rounded-lg shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
                         <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-                            <h4 class="text-sm font-semibold text-gray-800">用户中心 - 偏好设置</h4>
+                            <h4 class="text-sm font-semibold text-gray-800">用户中心</h4>
                             <div class="flex items-center gap-2">
                                 <button id="user-center-set-defaults-btn" type="button" class="hidden text-xs px-3 py-1.5 rounded-md border border-indigo-300 text-indigo-700 hover:bg-indigo-50">设为默认</button>
                                 <button id="user-center-close-btn" type="button" class="text-gray-500 hover:text-gray-700">关闭</button>
                             </div>
                         </div>
-                        <div class="p-4 overflow-y-auto flex-1 space-y-6">
-                            <!-- 材料设置 -->
+                        <div class="flex flex-1 overflow-hidden min-h-[500px]">
+                            <!-- 左侧导航 -->
+                            <div class="w-48 bg-gray-50 border-r border-gray-200 p-2 flex flex-col gap-1 overflow-y-auto">
+                                <button type="button" data-uc-tab="materials" class="uc-tab-btn w-full text-left px-3 py-2 rounded-md text-sm font-medium text-indigo-700 bg-indigo-50">细分材料</button>
+                                <button type="button" data-uc-tab="formulas" class="uc-tab-btn w-full text-left px-3 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">计算公式</button>
+                                <button type="button" data-uc-tab="costs" class="uc-tab-btn w-full text-left px-3 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">成本与时间</button>
+                                <button type="button" data-uc-tab="slicer" class="uc-tab-btn w-full text-left px-3 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">切片配置</button>
+                                <button type="button" data-uc-tab="security" class="uc-tab-btn w-full text-left px-3 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">账号安全</button>
+                            </div>
+                            
+                            <!-- 右侧内容区 -->
+                            <div class="flex-1 p-6 overflow-y-auto bg-white relative">
+                                <div id="uc-tab-materials" class="uc-tab-pane space-y-6 block">
+                                    <!-- 材料设置 -->
                             <div>
                                 <div class="flex justify-between items-center mb-2">
                                     <h5 class="text-sm font-medium text-gray-700">自定义材料</h5>
@@ -273,7 +285,9 @@
                                     </table>
                                 </div>
                             </div>
-                            <!-- 颜色绑定 -->
+                                </div>
+                                <div id="uc-tab-formulas" class="uc-tab-pane hidden space-y-6">
+                                    <!-- 颜色绑定 -->
                             <div>
                                 <div class="flex justify-between items-center mb-2">
                                     <h5 class="text-sm font-medium text-gray-700">计算公式</h5>
@@ -331,7 +345,9 @@
                                     </div>
                                 </div>
                             </div>
-                            <div>
+                                </div>
+                                <div id="uc-tab-costs" class="uc-tab-pane hidden space-y-6">
+                                    <div>
                                 <h5 class="text-sm font-medium text-gray-700 mb-2">成本与时间参数</h5>
                                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div>
@@ -388,7 +404,9 @@
                                     </label>
                                 </div>
                             </div>
-                            <div>
+                                </div>
+                                <div id="uc-tab-slicer" class="uc-tab-pane hidden space-y-6">
+                                    <div>
                                 <div class="flex justify-between items-center mb-2">
                                     <h5 class="text-sm font-medium text-gray-700">切片配置（.cfg/.json 预设）</h5>
                                     <div class="flex items-center gap-2">
@@ -493,9 +511,36 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="px-4 py-3 border-t border-gray-200 flex justify-end">
-                            <p id="user-center-msg" class="text-xs text-green-600 mr-4 self-center hidden">保存成功</p>
-                            <button id="user-center-save-btn" type="button" class="py-2 px-4 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700">保存设置</button>
+                                </div>
+                                <div id="uc-tab-security" class="uc-tab-pane hidden space-y-6">
+                                    <div>
+                                        <h5 class="text-sm font-medium text-gray-700 mb-4">修改密码</h5>
+                                        <div class="max-w-sm space-y-3">
+                                            <div>
+                                                <label class="block text-xs text-gray-600">原密码</label>
+                                                <input id="uc-old-password" type="password" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" placeholder="请输入原密码" />
+                                            </div>
+                                            <div>
+                                                <label class="block text-xs text-gray-600">新密码</label>
+                                                <input id="uc-new-password" type="password" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" placeholder="请输入新密码" />
+                                            </div>
+                                            <div>
+                                                <label class="block text-xs text-gray-600">确认新密码</label>
+                                                <input id="uc-confirm-password" type="password" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md text-sm" placeholder="请再次输入新密码" />
+                                            </div>
+                                            <p id="uc-password-msg" class="text-xs hidden"></p>
+                                            <button id="uc-change-password-btn" type="button" class="w-full py-2 px-3 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700">更新密码</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="px-4 py-3 border-t border-gray-200 flex justify-between items-center bg-gray-50">
+                            <div class="text-xs text-gray-500">提示：修改密码后需重新登录</div>
+                            <div class="flex items-center gap-4">
+                                <p id="user-center-msg" class="text-xs text-green-600 hidden">保存成功</p>
+                                <button id="user-center-save-btn" type="button" class="py-2 px-4 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700">保存设置</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -590,6 +635,13 @@
             const userCenterSaveBtn = document.getElementById('user-center-save-btn');
             const materialsTbody = document.getElementById('materials-tbody');
             const addMaterialBtn = document.getElementById('add-material-btn');
+            const ucTabBtns = document.querySelectorAll('.uc-tab-btn');
+            const ucTabPanes = document.querySelectorAll('.uc-tab-pane');
+            const ucOldPassword = document.getElementById('uc-old-password');
+            const ucNewPassword = document.getElementById('uc-new-password');
+            const ucConfirmPassword = document.getElementById('uc-confirm-password');
+            const ucPasswordMsg = document.getElementById('uc-password-msg');
+            const ucChangePasswordBtn = document.getElementById('uc-change-password-btn');
             const formulaResetBtn = document.getElementById('formula-reset-btn');
             const formulaValidateBtn = document.getElementById('formula-validate-btn');
             const formulaValidateMsg = document.getElementById('formula-validate-msg');
@@ -751,6 +803,7 @@
             function renderAuthUI() {
                 if (currentUser) {
                     openLoginBtn.classList.add('hidden');
+                    openMembershipBtn.classList.remove('hidden');
                     userMenu.classList.remove('hidden');
                     const isMember = !!currentUser.is_member;
                     userMenuBtn.textContent = isMember ? `${currentUser.username}（会员）` : `${currentUser.username}`;
@@ -761,6 +814,7 @@
                     }
                 } else {
                     openLoginBtn.classList.remove('hidden');
+                    openMembershipBtn.classList.add('hidden');
                     userMenu.classList.add('hidden');
                     userDropdown.classList.add('hidden');
                     openAdminUsersBtn.classList.add('hidden');
@@ -876,8 +930,12 @@
                         <td class="px-2 py-2">${p.name || '-'}</td>
                         <td class="px-2 py-2">${p.ext || '-'}</td>
                         <td class="px-2 py-2">${p.created_at || '-'}</td>
-                        <td class="px-2 py-2 text-right">
-                            <button type="button" data-slicer-delete="${p.id}" class="text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 rounded px-2 py-0.5">删除</button>
+                        <td class="px-2 py-2 text-right space-x-1">
+                            <a href="/api/slicer/presets/${p.id}/download?token=${authToken}" class="text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-300 rounded px-2 py-0.5 inline-block text-xs" download>下载</a>
+                            ${p.is_default 
+                                ? `<button type="button" class="text-gray-400 border border-gray-200 rounded px-2 py-0.5 cursor-not-allowed text-xs" disabled>删除</button>` 
+                                : `<button type="button" data-slicer-delete="${p.id}" class="text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 rounded px-2 py-0.5 text-xs">删除</button>`
+                            }
                         </td>
                     </tr>
                 `).join('');
@@ -1680,6 +1738,13 @@
                 if (userCenterSetDefaultsBtn) {
                     userCenterSetDefaultsBtn.classList.toggle('hidden', !(currentUser && currentUser.is_admin));
                 }
+                if (ucOldPassword) ucOldPassword.value = '';
+                if (ucNewPassword) ucNewPassword.value = '';
+                if (ucConfirmPassword) ucConfirmPassword.value = '';
+                if (ucPasswordMsg) {
+                    ucPasswordMsg.textContent = '';
+                    ucPasswordMsg.className = 'hidden';
+                }
                 userCenterModal.classList.remove('hidden');
                 fetchSlicerPresets();
             });
@@ -1712,6 +1777,32 @@
             userCenterBackdrop.addEventListener('click', () => {
                 userCenterModal.classList.add('hidden');
                 userCenterMsg.classList.add('hidden');
+            });
+
+            // User Center Tabs
+            ucTabBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const tabId = btn.getAttribute('data-uc-tab');
+                    
+                    // Update active button state
+                    ucTabBtns.forEach(b => {
+                        b.classList.remove('text-indigo-700', 'bg-indigo-50', 'active');
+                        b.classList.add('text-gray-600');
+                    });
+                    btn.classList.add('text-indigo-700', 'bg-indigo-50', 'active');
+                    btn.classList.remove('text-gray-600');
+                    
+                    // Update tab pane visibility
+                    ucTabPanes.forEach(pane => {
+                        pane.classList.add('hidden');
+                        pane.classList.remove('block');
+                    });
+                    const targetPane = document.getElementById(`uc-tab-${tabId}`);
+                    if (targetPane) {
+                        targetPane.classList.remove('hidden');
+                        targetPane.classList.add('block');
+                    }
+                });
             });
 
             if (userCenterSetDefaultsBtn) {
@@ -1999,6 +2090,75 @@
                     alert(e.message);
                 }
             });
+
+            if (ucChangePasswordBtn) {
+                ucChangePasswordBtn.addEventListener('click', async () => {
+                    const oldPwd = ucOldPassword.value;
+                    const newPwd = ucNewPassword.value;
+                    const confPwd = ucConfirmPassword.value;
+                    
+                    if (!oldPwd || !newPwd || !confPwd) {
+                        ucPasswordMsg.textContent = "所有密码字段必填";
+                        ucPasswordMsg.className = "text-xs text-red-600 block";
+                        return;
+                    }
+                    
+                    if (newPwd !== confPwd) {
+                        ucPasswordMsg.textContent = "两次输入的新密码不一致";
+                        ucPasswordMsg.className = "text-xs text-red-600 block";
+                        return;
+                    }
+                    
+                    if (newPwd.length < 6) {
+                        ucPasswordMsg.textContent = "新密码长度不能少于6位";
+                        ucPasswordMsg.className = "text-xs text-red-600 block";
+                        return;
+                    }
+                    
+                    try {
+                        const res = await authFetch('/api/users/change-password', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                old_password: oldPwd,
+                                new_password: newPwd
+                            })
+                        });
+                        
+                        if (res.status === 401) {
+                            userCenterModal.classList.add('hidden');
+                            openLoginModal();
+                            return;
+                        }
+                        
+                        let data = {};
+                        try { data = await res.json(); } catch(e){}
+                        
+                        if (!res.ok) {
+                            const msg = data && data.detail ? String(data.detail) : '修改失败';
+                            ucPasswordMsg.textContent = msg;
+                            ucPasswordMsg.className = "text-xs text-red-600 block";
+                            return;
+                        }
+                        
+                        ucPasswordMsg.textContent = "修改成功，请重新登录";
+                        ucPasswordMsg.className = "text-xs text-green-600 block";
+                        
+                        setTimeout(() => {
+                            userCenterModal.classList.add('hidden');
+                            currentUser = null;
+                            authToken = "";
+                            renderAuthUI();
+                            renderResultsTable();
+                            openLoginModal();
+                        }, 1500);
+                        
+                    } catch (e) {
+                        ucPasswordMsg.textContent = e.message;
+                        ucPasswordMsg.className = "text-xs text-red-600 block";
+                    }
+                });
+            }
 
             logoutBtn.addEventListener('click', () => {
                 currentUser = null;

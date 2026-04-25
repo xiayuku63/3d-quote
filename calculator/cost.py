@@ -292,6 +292,7 @@ def calculate_cost(
     slicer_filament_g_per_part = None
     preset_used = None
     kirimoto_error_msg = None
+    support_weight_g_per_part = 0.0  # Initialize variable to prevent UnboundLocalError
     if use_kirimoto and model_path and os.path.exists(model_path):
         preset_tmp_path = None
         try:

@@ -27,7 +27,7 @@ import bcrypt
 from pydantic import BaseModel, Field
 from fastapi import Depends, FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
@@ -1922,10 +1922,22 @@ def api_list_slicer_presets(current_user=Depends(get_current_user)):
         user_configs_dir = os.path.join(_user_base_dir(), user_folder, "configs")
         
         valid_items = []
+        
+        # 添加系统内置预设 A1
+        valid_items.append({
+            "id": 0,
+            "name": "A1-layer2-0.4mm-PLA (系统内置)",
+            "ext": ".json",
+            "created_at": "内置",
+            "is_default": True
+        })
+        
         for item in items:
             safe_preset_name = _sanitize_filename_component(item["name"], fallback="preset", max_len=60)
             config_saved_path = os.path.join(user_configs_dir, f"{safe_preset_name}{item['ext']}")
             if os.path.exists(config_saved_path):
+                # 兼容旧的前端
+                item["is_default"] = False
                 valid_items.append(item)
             else:
                 # 物理文件已丢失，同步清理数据库
@@ -2050,8 +2062,44 @@ async def api_upsert_slicer_preset(
     return {"status": "ok", "preset": saved}
 
 
+@app.get("/api/slicer/presets/{preset_id}/download")
+def api_download_slicer_preset(preset_id: int, token: str):
+    try:
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        user_id = int(payload.get("sub", "0"))
+    except (JWTError, ValueError):
+        raise HTTPException(status_code=401, detail="登录已失效")
+    
+    current_user = get_user_by_id(user_id)
+    if not current_user:
+        raise HTTPException(status_code=401, detail="用户不存在")
+        
+    if preset_id == 0:
+        template_path = os.path.join(os.path.dirname(__file__), "A1-layer2-0.4mm-PLA.json")
+        if not os.path.exists(template_path):
+            raise HTTPException(status_code=404, detail="系统预设文件丢失")
+        return FileResponse(template_path, filename="A1-layer2-0.4mm-PLA.json")
+        
+    preset = get_slicer_preset_by_id(int(current_user["id"]), int(preset_id))
+    if not preset:
+        raise HTTPException(status_code=404, detail="预设不存在或无权限")
+        
+    user_folder = f"user_{current_user['id']}_{current_user['username']}"
+    user_configs_dir = os.path.join(_user_base_dir(), user_folder, "configs")
+    safe_preset_name = _sanitize_filename_component(preset["name"], fallback="preset", max_len=60)
+    config_saved_path = os.path.join(user_configs_dir, f"{safe_preset_name}{preset['ext']}")
+    
+    if not os.path.exists(config_saved_path):
+        raise HTTPException(status_code=404, detail="预设文件实体已丢失")
+        
+    return FileResponse(config_saved_path, filename=f"{safe_preset_name}{preset['ext']}")
+
+
 @app.delete("/api/slicer/presets/{preset_id}")
 def api_delete_slicer_preset(preset_id: int, request: Request, current_user=Depends(get_current_user)):
+    if preset_id == 0:
+        raise HTTPException(status_code=400, detail="系统预设不可删除")
+        
     preset = get_slicer_preset_by_id(int(current_user["id"]), int(preset_id))
     if not preset:
         raise HTTPException(status_code=404, detail="预设不存在或无权限")
@@ -2574,6 +2622,32 @@ def admin_cleanup(request: Request, current_user=Depends(get_current_user)):
         conn.commit()
     write_audit_event(action="admin.maintenance.cleanup", request=request, user=current_user, detail={"deleted": deleted})
     return {"status": "ok", "deleted": deleted, "audit_retention_days": AUDIT_RETENTION_DAYS}
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str = Field(..., min_length=1, max_length=128)
+    new_password: str = Field(..., min_length=6, max_length=128)
+
+@app.post("/api/users/change-password")
+def change_password(req: ChangePasswordRequest, request: Request, current_user=Depends(get_current_user)):
+    with get_db_conn() as conn:
+        row = conn.execute("SELECT password_hash FROM users WHERE id = ?", (current_user["id"],)).fetchone()
+    
+    if not row:
+        raise HTTPException(status_code=404, detail="USER_NOT_FOUND: 用户不存在")
+        
+    if not verify_password(req.old_password, row["password_hash"]):
+        raise HTTPException(status_code=400, detail="INVALID_OLD_PASSWORD: 原密码错误")
+        
+    if req.old_password == req.new_password:
+        raise HTTPException(status_code=400, detail="SAME_PASSWORD: 新密码不能与原密码相同")
+        
+    new_hash = get_password_hash(req.new_password)
+    with get_db_conn() as conn:
+        conn.execute("UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?", (new_hash, datetime.now(timezone.utc).isoformat(), current_user["id"]))
+        conn.commit()
+        
+    write_audit_event(action="user.password.change", request=request, user=current_user, detail={})
+    return {"status": "ok", "message": "密码修改成功"}
 
 @app.post("/api/quote")
 async def get_quote(
