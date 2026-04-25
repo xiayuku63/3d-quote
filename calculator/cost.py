@@ -296,6 +296,7 @@ def calculate_cost(
     if use_kirimoto and model_path and os.path.exists(model_path):
         preset_tmp_path = None
         try:
+            logger.info(f"Kiri:Moto enabled, slicing: {model_path}")
             base_name = os.path.splitext(os.path.basename(model_path))[0]
             output_prefix = _sanitize_filename_component(base_name, fallback="model", max_len=60)
             user_folder = f"user_{current_user['id']}_{current_user['username']}" if current_user else "anonymous"

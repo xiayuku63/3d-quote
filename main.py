@@ -2686,6 +2686,7 @@ async def get_quote(
     slicer_preset_id: Optional[int] = Form(default=None),
     quantity: int = Form(1, ge=1, le=5000),
     color: str = Form("White", min_length=1, max_length=40),
+    use_kirimoto: Optional[bool] = Form(default=None),
     current_user=Depends(get_current_user),
 ):
     try:
@@ -2712,6 +2713,9 @@ async def get_quote(
             row = conn.execute("SELECT materials, pricing_config FROM users WHERE id = ?", (current_user["id"],)).fetchone()
         user_materials = json.loads(row["materials"]) if row and row["materials"] else DEFAULT_MATERIALS
         pricing_config = json.loads(row["pricing_config"]) if row and row["pricing_config"] else DEFAULT_PRICING_CONFIG
+
+        if use_kirimoto is not None:
+            pricing_config["use_kirimoto"] = use_kirimoto
 
         material_names = {str(m.get("name")) for m in user_materials if isinstance(m, dict)}
         if material not in material_names:

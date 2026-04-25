@@ -102,6 +102,17 @@
                                                         <div class="text-sm font-medium text-gray-700 mt-2">上传 3D 模型（stl/stp/step/obj/3mf，最多20个，单文件&lt;100MB）</div>
                                                     </div>
                                                 </div>
+
+                                                <div class="mt-4 flex flex-col items-center justify-center">
+                                                    <label class="flex items-center gap-2 cursor-pointer bg-white px-4 py-2 border border-gray-200 rounded-md shadow-sm hover:bg-gray-50 transition-colors">
+                                                        <input type="checkbox" id="main-use-kirimoto" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                                                        <span class="text-sm text-gray-800 font-medium">使用后台切片引擎精确估算</span>
+                                                    </label>
+                                                    <p class="text-xs text-amber-600 mt-2 bg-amber-50 px-3 py-1 rounded-full flex items-center gap-1">
+                                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                                        提示：勾选后计算时间会增加，但报价更精准
+                                                    </p>
+                                                </div>
                                             </form>
                                         </td>
                                     </tr>
@@ -398,14 +409,17 @@
                                         <label class="block text-xs text-gray-600">支撑单价（元/克）</label>
                                         <input id="cfg-support-price-per-g" type="number" step="0.001" class="mt-1 w-full border border-gray-300 rounded-sm text-xs px-2 py-1" />
                                     </div>
-                                    <label class="flex items-center gap-2 text-xs text-gray-700">
-                                        <input id="cfg-use-kirimoto" type="checkbox" class="rounded border-gray-300" />
-                                        <span>使用 Kiri:Moto 切片估时/支撑（服务器需配置 KIRIMOTO_PATH）</span>
-                                    </label>
                                         </div>
                                     </div>
                                 </div>
                                 <div id="uc-tab-slicer" class="uc-tab-pane hidden space-y-6">
+                                    <div class="bg-indigo-50 border border-indigo-100 p-3 rounded-md mb-4">
+                                        <label class="flex items-center gap-2 text-sm text-indigo-900 font-medium cursor-pointer">
+                                            <input id="cfg-use-kirimoto" type="checkbox" class="rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500" />
+                                            <span>使用 Kiri:Moto 切片估时/支撑（服务器需配置 KIRIMOTO_PATH）</span>
+                                        </label>
+                                        <div class="text-[11px] text-indigo-600 mt-1 ml-6">勾选后将默认使用后台切片引擎进行更精准的时间和材料估算。</div>
+                                    </div>
                                     <div>
                                         <div class="flex justify-between items-center mb-2">
                                             <h5 class="text-sm font-medium text-gray-700">切片配置（.cfg/.json 预设）</h5>
@@ -491,7 +505,6 @@
                                     <select id="cfg-slicer-preset-id" class="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md text-sm">
                                         <option value="">不使用预设</option>
                                     </select>
-                                    <div class="text-[11px] text-gray-500 mt-1">仅对勾选“使用 Kiri:Moto 切片估时/支撑”的用户生效；不选择则只用基础参数估算。</div>
                                 </div>
                                 <div class="mt-3 overflow-x-auto border border-gray-200 rounded-md">
                                     <table class="min-w-full text-[11px] text-left">
@@ -1251,6 +1264,10 @@
                 if (quoteOptions.slicer_preset_id !== null && quoteOptions.slicer_preset_id !== undefined) {
                     formData.append("slicer_preset_id", String(quoteOptions.slicer_preset_id));
                 }
+                const mainUseKirimoto = document.getElementById('main-use-kirimoto');
+                if (mainUseKirimoto) {
+                    formData.append("use_kirimoto", mainUseKirimoto.checked ? "true" : "false");
+                }
                 const response = await authFetch('/api/quote', { method: 'POST', body: formData });
                 const data = await response.json();
                 if (!response.ok) {
@@ -1618,7 +1635,13 @@
                 const rendered = renderColorOptionsForMaterial(quoteOptions.material, quoteOptions.color);
                 optColor.innerHTML = rendered.html;
                 quoteOptions.color = rendered.selected;
+
                 refreshOptionsSummary();
+
+                const mainUseKirimoto = document.getElementById('main-use-kirimoto');
+                if (mainUseKirimoto && PRICING_CONFIG) {
+                    mainUseKirimoto.checked = !!(Number(PRICING_CONFIG.use_kirimoto) || 0) || PRICING_CONFIG.use_kirimoto === true;
+                }
             }
 
             async function handleAuthSuccess(data) {
@@ -2329,6 +2352,10 @@
                 if (quoteOptions.slicer_preset_id !== null && quoteOptions.slicer_preset_id !== undefined) {
                     formData.append("slicer_preset_id", String(quoteOptions.slicer_preset_id));
                 }
+                const mainUseKirimoto = document.getElementById('main-use-kirimoto');
+                if (mainUseKirimoto) {
+                    formData.append("use_kirimoto", mainUseKirimoto.checked ? "true" : "false");
+                }
 
                 const response = await authFetch('/api/quote', {
                     method: 'POST',
@@ -2363,6 +2390,8 @@
                         ? item.filename.split('.').pop().toLowerCase()
                         : '-';
                     if (item.status === 'success') {
+                        const breakdown = item && item.cost_breakdown && typeof item.cost_breakdown === 'object' ? item.cost_breakdown : null;
+                        const kiriUsed = !!(breakdown && breakdown.kirimoto_used);
                         const markupPercentRaw = Number(item.difficulty_markup_percent);
                         let markupPercent = Number.isFinite(markupPercentRaw) ? markupPercentRaw : NaN;
                         if (!Number.isFinite(markupPercent)) {
@@ -2413,7 +2442,10 @@
                             <td class="px-2 py-1.5">${formatTimeHMS(item.estimated_time_h)}</td>
                             <td class="px-2 py-1.5">¥ ${item.unit_cost_cny}</td>
                             <td class="px-2 py-1.5">¥ ${item.cost_cny}</td>
-                            <td data-role="status-cell" class="px-2 py-1.5 text-green-600">成功</td>
+                            <td data-role="status-cell" class="px-2 py-1.5 text-green-600">
+                                <div>成功</div>
+                                ${kiriUsed ? '<div class="text-[10px] text-indigo-600">Kiri:Moto</div>' : ''}
+                            </td>
                             <td class="px-2 py-1.5">
                                 <button type="button" data-delete-file="${item.filename}" class="text-[11px] text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 rounded px-2 py-0.5">删除</button>
                             </td>
