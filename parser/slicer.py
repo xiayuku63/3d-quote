@@ -92,6 +92,19 @@ def _grid_apps_cli_missing_sources(grid_root: str) -> list[str]:
         return []
 
 
+def _kirimoto_cli_kind(exe: str) -> str:
+    raw = str(exe or "").strip().lower()
+    if not raw:
+        return "unknown"
+    if "kirimoto-slicer" in raw:
+        return "spiritdude"
+    if raw.startswith("node ") and ("grid-apps" in raw.replace("\\", "/")) and raw.endswith("/src/kiri/run/cli.js"):
+        return "grid-apps"
+    if "kiri-moto" in raw:
+        return "kiri-moto"
+    return "unknown"
+
+
 def kirimoto_executable_diagnostics() -> dict:
     import shlex
 
@@ -339,19 +352,23 @@ def run_kirimoto_slice(
     import shlex
     cmd = shlex.split(exe, posix=(os.name != "nt")) if (" " in exe or "\t" in exe) else [exe]
     temp_source_path = None
+    cli_kind = _kirimoto_cli_kind(exe)
     
-    # kiri-moto options
     if extra_loads:
         for cfg in extra_loads:
             if cfg and os.path.exists(cfg):
-                # Using --load if supported by Spiritdude's fork, or --process for grid-apps
-                cmd.extend([f"--process={cfg}"])
+                if cli_kind == "spiritdude":
+                    cmd.extend([f"--load={cfg}"])
+                else:
+                    cmd.extend([f"--process={cfg}"])
 
     if extra_sets:
         for k, v in extra_sets.items():
-            # Add parameters based on how Kiri:Moto CLI accepts them
-            # For grid-apps, settings might need to be in a process JSON file
-            pass
+            if cli_kind == "spiritdude":
+                kk = str(k or "").strip()
+                vv = str(v if v is not None else "").strip()
+                if kk and vv:
+                    cmd.append(f"--{kk}={vv}")
 
     cmd.extend([f"--output={output_gcode_path}", model_path])
     
