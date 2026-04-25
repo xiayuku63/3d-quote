@@ -7,10 +7,13 @@ import time
 import tempfile
 import uuid
 import hashlib
+import logging
 from typing import List, Optional
 from fastapi import UploadFile, Request
 
 from parser.slicer import run_kirimoto_slice, kirimoto_support_diff_stats
+
+logger = logging.getLogger(__name__)
 
 def calculate_weight(volume, material_density):
     """Calculate weight (unit: g)"""
