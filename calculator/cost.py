@@ -215,8 +215,14 @@ def validate_formula_expression(expr: str) -> tuple[bool, str, list[str]]:
 
 
 def _kirimoto_sets_from_quote_params(layer_height_mm: float, infill_percent: int, perimeters: Optional[int]) -> dict[str, str]:
-    # TODO: Add Kiri:Moto specific parameters mapping if necessary
-    d = {}
+    d = {
+        "sliceHeight": str(layer_height_mm),
+        "sliceFillSparse": str(max(0.0, min(1.0, infill_percent / 100.0)))
+    }
+    if perimeters is not None:
+        d["sliceShells"] = str(perimeters)
+        d["sliceTopShells"] = str(perimeters)
+        d["sliceBottomShells"] = str(perimeters)
     return d
 
 

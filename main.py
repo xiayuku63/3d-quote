@@ -1940,6 +1940,80 @@ def api_list_slicer_presets(current_user=Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=f"INTERNAL_ERROR: 获取预设失败 ({str(e)})")
 
 
+class SlicerPresetGenerateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=60, description="预设名称")
+    bed_width: float = Field(256.0, ge=50.0, le=1000.0, description="打印机X轴尺寸(mm)")
+    bed_depth: float = Field(256.0, ge=50.0, le=1000.0, description="打印机Y轴尺寸(mm)")
+    bed_height: float = Field(256.0, ge=50.0, le=1000.0, description="打印机Z轴尺寸(mm)")
+    nozzle_size: float = Field(0.4, description="喷嘴大小(mm)")
+    layer_height: float = Field(0.2, description="默认层高(mm)")
+    infill: int = Field(20, description="默认填充(%)")
+    wall_count: int = Field(3, description="默认墙层数")
+
+@app.post("/api/slicer/presets/generate")
+def api_generate_slicer_preset(payload: SlicerPresetGenerateRequest, request: Request, current_user=Depends(get_current_user)):
+    # 严格的参数白名单校验
+    valid_nozzles = [0.2, 0.4, 0.6, 0.8]
+    if not any(abs(payload.nozzle_size - v) < 0.001 for v in valid_nozzles):
+        raise HTTPException(status_code=400, detail="喷嘴大小只允许 0.2, 0.4, 0.6, 0.8")
+    
+    valid_layer_heights = [0.08, 0.12, 0.16, 0.20, 0.24, 0.28, 0.40]
+    if not any(abs(payload.layer_height - v) < 0.001 for v in valid_layer_heights):
+        raise HTTPException(status_code=400, detail="层高只允许推荐值 (如 0.12, 0.16, 0.20, 0.24, 0.28)")
+        
+    valid_infills = [5, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]
+    if payload.infill not in valid_infills:
+        raise HTTPException(status_code=400, detail="填充率只允许推荐值 (如 10, 15, 20, 50, 100)")
+        
+    valid_walls = [2, 3, 4, 5, 6, 8, 10]
+    if payload.wall_count not in valid_walls:
+        raise HTTPException(status_code=400, detail="墙层数只允许推荐值 (如 2, 3, 4, 5, 6)")
+
+    preset_name = payload.name.strip()
+    ext = ".json"
+    
+    preset_data = {
+        "settings": {
+            "device": {
+                "bedWidth": payload.bed_width,
+                "bedDepth": payload.bed_depth,
+                "bedHeight": payload.bed_height,
+                "nozzleSize": payload.nozzle_size,
+                "gcodePre": ["G28", "M104 S220", "M140 S60", "M109 S220", "M190 S60"],
+                "gcodePost": ["M104 S0", "M140 S0", "G28 X0 Y0", "M84"]
+            },
+            "process": {
+                "sliceHeight": payload.layer_height,
+                "sliceFillSparse": payload.infill / 100.0,
+                "sliceShells": payload.wall_count,
+                "sliceFillType": "gyroid",
+                "sliceTopShells": payload.wall_count,
+                "sliceBottomShells": payload.wall_count,
+                "firstSliceHeight": payload.layer_height
+            }
+        }
+    }
+    
+    raw = json.dumps(preset_data, indent=2).encode("utf-8")
+    
+    user_folder = f"user_{current_user['id']}_{current_user['username']}"
+    user_configs_dir = os.path.join(_user_base_dir(), user_folder, "configs")
+    os.makedirs(user_configs_dir, exist_ok=True)
+    safe_preset_name = _sanitize_filename_component(preset_name, fallback="preset", max_len=60)
+    config_saved_path = os.path.join(user_configs_dir, f"{safe_preset_name}{ext}")
+    
+    with open(config_saved_path, "wb") as f:
+        f.write(raw)
+        
+    saved = upsert_slicer_preset(int(current_user["id"]), preset_name, ext, raw)
+    write_audit_event(
+        action="slicer.preset.generate",
+        request=request,
+        user=current_user,
+        detail={"preset_id": int(saved["id"]), "name": str(saved["name"]), "ext": ext, "bytes": len(raw)},
+    )
+    return {"status": "ok", "preset": saved}
+
 @app.post("/api/slicer/presets")
 async def api_upsert_slicer_preset(
     request: Request,
