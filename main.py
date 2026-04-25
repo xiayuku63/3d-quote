@@ -83,10 +83,12 @@ async def validation_exception_handler(request, exc):
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
+    if isinstance(exc, HTTPException):
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
     logger.exception("Unhandled server error on path %s", request.url.path)
     return JSONResponse(
         status_code=500,
-        content={"detail": "服务器内部错误，请稍后重试"},
+        content={"detail": f"服务器内部错误: {str(exc)}"},
     )
 
 # Ensure static directory exists
@@ -1537,7 +1539,17 @@ from parser.geometry import calculate_geometry
 
 from parser.slicer import parse_kirimoto_gcode_stats, kirimoto_executable, run_kirimoto_slice, kirimoto_support_diff_stats
 
-from calculator.cost import calculate_weight, merge_pricing_config, estimate_print_time_hours, safe_eval_formula, with_formula_aliases, validate_formula_expression, calculate_cost, process_single_file
+from calculator.cost import (
+    calculate_weight, 
+    merge_pricing_config, 
+    estimate_print_time_hours, 
+    safe_eval_formula, 
+    with_formula_aliases, 
+    validate_formula_expression, 
+    calculate_cost, 
+    process_single_file,
+    FORMULA_ALIAS_TO_CANONICAL
+)
 
 def on_startup():
     init_db()
