@@ -77,15 +77,103 @@ def _grid_apps_cli_missing_sources(grid_root: str) -> list[str]:
         for entry in data:
             if not isinstance(entry, str) or not entry.strip():
                 continue
-            rel = os.path.join("src", *(entry.split("/"))) + ".js"
+            entry_norm = entry.strip()
+            alt_entry = entry_norm
+            if entry_norm == "main/gapp":
+                alt_entry = "main/kiri"
+            rel = os.path.join("src", *(alt_entry.split("/"))) + ".js"
             abs_path = os.path.join(grid_root, rel)
             if not os.path.exists(abs_path):
-                missing.append(rel.replace("\\", "/"))
+                missing.append(os.path.join("src", *(entry_norm.split("/"))) + ".js")
                 if len(missing) >= 20:
                     break
         return missing
     except Exception:
         return []
+
+
+def kirimoto_executable_diagnostics() -> dict:
+    import shlex
+
+    diagnostics: dict = {
+        "node_in_path": shutil.which("node") is not None,
+        "candidates": [],
+    }
+
+    candidates: list[str] = []
+    env_path = os.getenv("KIRIMOTO_PATH", "").strip()
+    if env_path:
+        candidates.append(env_path)
+    candidates.extend(_env_csv("KIRIMOTO_PATH_CANDIDATES"))
+    candidates.append("kiri-moto")
+    candidates.append("kirimoto-slicer")
+    for root in _grid_apps_root_candidates():
+        local_cli = os.path.join(root, "src", "kiri", "run", "cli.js")
+        abs_cli = os.path.abspath(local_cli)
+        if " " in abs_cli:
+            candidates.append(f'node "{abs_cli}"')
+        else:
+            candidates.append(f"node {abs_cli}")
+    candidates.append("node /root/grid-apps/src/kiri/run/cli.js")
+
+    validate = os.getenv("KIRIMOTO_VALIDATE_GRID_APPS", "1").strip().lower() not in {"0", "false", "no", "off"}
+
+    for cand in candidates:
+        entry = {"candidate": cand, "status": "unknown"}
+        try:
+            raw = str(cand or "").strip()
+            if not raw:
+                entry["status"] = "empty"
+                diagnostics["candidates"].append(entry)
+                continue
+            if raw.startswith("node "):
+                parts = shlex.split(raw, posix=(os.name != "nt"))
+                if len(parts) < 2:
+                    entry["status"] = "invalid_node_command"
+                    diagnostics["candidates"].append(entry)
+                    continue
+                if shutil.which(parts[0]) is None:
+                    entry["status"] = "node_not_found"
+                    diagnostics["candidates"].append(entry)
+                    continue
+                script_path = parts[1]
+                entry["script_path"] = script_path
+                if not os.path.exists(script_path):
+                    entry["status"] = "script_not_found"
+                    diagnostics["candidates"].append(entry)
+                    continue
+                if validate:
+                    grid_root = _grid_apps_root_from_cli_script(script_path)
+                    if grid_root:
+                        missing = _grid_apps_cli_missing_sources(grid_root)
+                        if missing:
+                            entry["status"] = "grid_apps_incomplete"
+                            entry["grid_root"] = grid_root
+                            entry["missing_sources"] = missing
+                            diagnostics["candidates"].append(entry)
+                            continue
+                entry["status"] = "ok"
+                diagnostics["candidates"].append(entry)
+                continue
+            if os.path.isabs(raw):
+                entry["path"] = raw
+                entry["status"] = "ok" if os.path.exists(raw) else "path_not_found"
+                diagnostics["candidates"].append(entry)
+                continue
+            parts = shlex.split(raw, posix=(os.name != "nt"))
+            exe = parts[0] if parts else ""
+            entry["exe"] = exe
+            if exe and shutil.which(exe) is not None:
+                entry["status"] = "ok"
+            else:
+                entry["status"] = "exe_not_found"
+            diagnostics["candidates"].append(entry)
+        except Exception as e:
+            entry["status"] = "error"
+            entry["error"] = str(e)
+            diagnostics["candidates"].append(entry)
+
+    return diagnostics
 
 
 def parse_kirimoto_gcode_stats(gcode_path: str) -> dict:
@@ -225,13 +313,32 @@ def run_kirimoto_slice(
 ) -> dict:
     exe = kirimoto_executable()
     if not exe:
-        raise RuntimeError("未配置 KIRIMOTO_PATH (找不到 Kiri:Moto CLI)")
+        diag = kirimoto_executable_diagnostics()
+        incomplete = [c for c in diag.get("candidates", []) if c.get("status") == "grid_apps_incomplete"]
+        node_in_path = bool(diag.get("node_in_path"))
+        details = []
+        if not node_in_path:
+            details.append("node 不在 PATH（需要安装/配置 node）")
+        if incomplete:
+            first = incomplete[0]
+            grid_root = first.get("grid_root") or ""
+            missing_sources = first.get("missing_sources") or []
+            details.append(f"检测到 grid-apps 不完整: {grid_root} 缺少 {missing_sources[:5]}")
+        hint = (
+            "请确保服务器上存在完整的 grid-apps，并设置环境变量其一："
+            "KIRIMOTO_PATH='node /path/to/grid-apps/src/kiri/run/cli.js' 或 GRID_APPS_DIR=/path/to/grid-apps"
+        )
+        msg = "未配置 KIRIMOTO_PATH (找不到 Kiri:Moto CLI)"
+        if details:
+            msg = msg + "；" + "；".join(details)
+        raise RuntimeError(msg + "。 " + hint)
     out_dir = os.path.dirname(str(output_gcode_path or "").strip())
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
         
     import shlex
     cmd = shlex.split(exe, posix=(os.name != "nt")) if (" " in exe or "\t" in exe) else [exe]
+    temp_source_path = None
     
     # kiri-moto options
     if extra_loads:
@@ -254,9 +361,26 @@ def run_kirimoto_slice(
     if cmd and cmd[0] == "node" and len(cmd) >= 2:
         script_path = cmd[1]
         if script_path and os.path.exists(script_path) and ("grid-apps" in script_path.replace("\\", "/")):
-            grid_root = os.path.abspath(os.path.join(os.path.dirname(script_path), "..", "..", ".."))
-            if os.path.isdir(grid_root):
+            grid_root = _grid_apps_root_from_cli_script(script_path)
+            if grid_root:
                 cwd = grid_root
+                try:
+                    import json
+                    src_list_path = os.path.join(grid_root, "src", "cli", "kiri-source.json")
+                    kiri_main = os.path.join(grid_root, "src", "main", "kiri.js")
+                    gapp_main = os.path.join(grid_root, "src", "main", "gapp.js")
+                    if os.path.exists(src_list_path) and os.path.exists(kiri_main) and not os.path.exists(gapp_main):
+                        with open(src_list_path, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                        if isinstance(data, list) and "main/gapp" in data and "main/kiri" not in data:
+                            fixed = [("main/kiri" if x == "main/gapp" else x) for x in data]
+                            tmp = tempfile.NamedTemporaryFile("w", delete=False, suffix=".json", encoding="utf-8")
+                            temp_source_path = tmp.name
+                            json.dump(fixed, tmp, ensure_ascii=False)
+                            tmp.close()
+                            cmd.insert(2, f"--source={temp_source_path}")
+                except Exception:
+                    pass
 
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s, cwd=cwd, shell=False)
@@ -265,6 +389,12 @@ def run_kirimoto_slice(
             raise RuntimeError(f"Kiri:Moto 切片失败：{err[:300]} (exe={exe}, cwd={cwd or ''})")
     except FileNotFoundError:
          raise RuntimeError(f"未找到 Kiri:Moto CLI 命令: {exe}")
+    finally:
+        if temp_source_path:
+            try:
+                os.unlink(temp_source_path)
+            except Exception:
+                pass
         
     stats = parse_kirimoto_gcode_stats(output_gcode_path)
     return stats
