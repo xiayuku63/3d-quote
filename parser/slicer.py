@@ -372,8 +372,18 @@ def run_kirimoto_slice(
                     if os.path.exists(src_list_path) and os.path.exists(kiri_main) and not os.path.exists(gapp_main):
                         with open(src_list_path, "r", encoding="utf-8") as f:
                             data = json.load(f)
-                        if isinstance(data, list) and "main/gapp" in data and "main/kiri" not in data:
-                            fixed = [("main/kiri" if x == "main/gapp" else x) for x in data]
+                        if isinstance(data, list) and "main/gapp" in data:
+                            fixed_raw = [("main/kiri" if x == "main/gapp" else x) for x in data]
+                            fixed: list[str] = []
+                            seen = set()
+                            for item in fixed_raw:
+                                if not isinstance(item, str):
+                                    continue
+                                key = item.strip()
+                                if not key or key in seen:
+                                    continue
+                                fixed.append(key)
+                                seen.add(key)
                             tmp = tempfile.NamedTemporaryFile("w", delete=False, suffix=".json", encoding="utf-8")
                             temp_source_path = tmp.name
                             json.dump(fixed, tmp, ensure_ascii=False)
