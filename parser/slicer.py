@@ -34,6 +34,23 @@ def _parse_hms_to_seconds(text: str) -> Optional[int]:
     return total
 
 
+def _grid_apps_root_candidates() -> list[str]:
+    roots: list[str] = []
+    for key in ("GRID_APPS_DIR", "GRID_APPS_ROOT", "KIRIMOTO_GRID_APPS_DIR"):
+        raw = os.getenv(key, "").strip()
+        if raw:
+            roots.append(raw)
+    roots.extend(_env_csv("GRID_APPS_DIR_CANDIDATES"))
+    project_root = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(__file__))))
+    roots.append(os.path.join(project_root, "grid-apps"))
+    out: list[str] = []
+    for r in roots:
+        rr = os.path.abspath(str(r or "").strip())
+        if rr and rr not in out:
+            out.append(rr)
+    return out
+
+
 def parse_kirimoto_gcode_stats(gcode_path: str) -> dict:
     out = {"estimated_time_s": None, "filament_g": None, "filament_mm": None}
     try:
@@ -114,13 +131,12 @@ def kirimoto_executable() -> Optional[str]:
     # Try global node module / CLI
     candidates.append("kiri-moto")
     candidates.append("kirimoto-slicer")
-    
-    # Check common server deployment path (e.g. Ubuntu root)
+
+    for root in _grid_apps_root_candidates():
+        local_cli = os.path.join(root, "src", "kiri", "run", "cli.js")
+        candidates.append(f"node {os.path.abspath(local_cli)}")
+
     candidates.append("node /root/grid-apps/src/kiri/run/cli.js")
-    
-    # Check if grid-apps is locally deployed
-    local_cli = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(__file__)), "grid-apps", "src", "kiri", "run", "cli.js"))
-    candidates.append(f"node {local_cli}")
 
     for p in candidates:
         try:
@@ -129,7 +145,7 @@ def kirimoto_executable() -> Optional[str]:
                 continue
             if cand.startswith("node "):
                 import shlex
-                parts = shlex.split(cand)
+                parts = shlex.split(cand, posix=(os.name != "nt"))
                 if len(parts) < 2:
                     continue
                 if shutil.which(parts[0]) is None:
@@ -143,7 +159,7 @@ def kirimoto_executable() -> Optional[str]:
                     return cand
                 continue
             import shlex
-            parts = shlex.split(cand)
+            parts = shlex.split(cand, posix=(os.name != "nt"))
             exe = parts[0] if parts else ""
             if exe and shutil.which(exe) is not None:
                 return cand
@@ -168,7 +184,7 @@ def run_kirimoto_slice(
         os.makedirs(out_dir, exist_ok=True)
         
     import shlex
-    cmd = shlex.split(exe) if " " in exe else [exe]
+    cmd = shlex.split(exe, posix=(os.name != "nt")) if (" " in exe or "\t" in exe) else [exe]
     
     # kiri-moto options
     if extra_loads:
@@ -187,19 +203,16 @@ def run_kirimoto_slice(
     
     timeout_s = float(os.getenv("KIRIMOTO_TIMEOUT_SECONDS", "120") or "120")
     
-    # If using grid-apps, we must run it from its root directory or pass --dir
     cwd = None
-    if "grid-apps" in exe:
-        # Extract the grid-apps directory path
-        try:
-            parts = exe.split("grid-apps")
-            cwd = parts[0].split("node ")[-1].strip() + "grid-apps"
-        except Exception:
-            pass
+    if cmd and cmd[0] == "node" and len(cmd) >= 2:
+        script_path = cmd[1]
+        if script_path and os.path.exists(script_path) and ("grid-apps" in script_path.replace("\\", "/")):
+            grid_root = os.path.abspath(os.path.join(os.path.dirname(script_path), "..", "..", ".."))
+            if os.path.isdir(grid_root):
+                cwd = grid_root
 
     try:
-        # Use shell=True if it's a raw command like "kiri-moto"
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s, cwd=cwd, shell=True if not os.path.isabs(cmd[0]) else False)
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s, cwd=cwd, shell=False)
         if res.returncode != 0:
             err = (res.stderr or res.stdout or "").strip()
             raise RuntimeError(f"Kiri:Moto 切片失败：{err[:300]}")
