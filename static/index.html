@@ -2372,6 +2372,8 @@
 
             function renderResultsTable() {
                 const tbody = document.getElementById('batch-results-body');
+                const mainUseKirimotoToggle = document.getElementById('main-use-kirimoto');
+                const showKiriStatus = !!(mainUseKirimotoToggle && mainUseKirimotoToggle.checked);
                 tbody.innerHTML = '';
                 if (!currentResults.length) {
                     tbody.innerHTML = `
@@ -2393,9 +2395,11 @@
                         const kiriUsed = !!(breakdown && breakdown.kirimoto_used);
                         const kiriErrorRaw = breakdown && breakdown.kirimoto_error ? String(breakdown.kirimoto_error) : "";
                         const kiriError = kiriErrorRaw ? escapeHtml(kiriErrorRaw) : "";
-                        const kiriExtraHtml = kiriUsed
-                            ? '<div class="text-[10px] text-indigo-600">Kiri:Moto</div>'
-                            : (kiriError ? `<div class="text-[10px] text-amber-700">Kiri:Moto失败：${kiriError}</div>` : '');
+                        const kiriExtraHtml = showKiriStatus
+                            ? (kiriUsed
+                                ? '<div class="text-[10px] text-indigo-600">Kiri:Moto</div>'
+                                : (kiriError ? `<div class="text-[10px] text-amber-700">Kiri:Moto失败：${kiriError}</div>` : ''))
+                            : '';
                         const markupPercentRaw = Number(item.difficulty_markup_percent);
                         let markupPercent = Number.isFinite(markupPercentRaw) ? markupPercentRaw : NaN;
                         if (!Number.isFinite(markupPercent)) {

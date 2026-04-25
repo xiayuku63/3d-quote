@@ -2,6 +2,7 @@ import os
 import re
 import subprocess
 import tempfile
+import shutil
 from typing import Optional
 
 def _env_csv(name: str) -> list[str]:
@@ -123,12 +124,34 @@ def kirimoto_executable() -> Optional[str]:
 
     for p in candidates:
         try:
-            # simple check if path exists or if it's a command like "kiri-moto"
-            if p.startswith("node ") or not os.path.isabs(p) or os.path.exists(p):
-                return p
+            cand = str(p or "").strip()
+            if not cand:
+                continue
+            if cand.startswith("node "):
+                import shlex
+                parts = shlex.split(cand)
+                if len(parts) < 2:
+                    continue
+                if shutil.which(parts[0]) is None:
+                    continue
+                script_path = parts[1]
+                if os.path.exists(script_path):
+                    return cand
+                continue
+            if os.path.isabs(cand):
+                if os.path.exists(cand):
+                    return cand
+                continue
+            import shlex
+            parts = shlex.split(cand)
+            exe = parts[0] if parts else ""
+            if exe and shutil.which(exe) is not None:
+                return cand
+            if os.path.exists(cand):
+                return os.path.abspath(cand)
         except Exception:
             continue
-    return "kiri-moto"
+    return None
 
 
 def run_kirimoto_slice(
@@ -246,4 +269,3 @@ def kirimoto_support_diff_stats(
     if st_on.get("estimated_time_s") is not None:
         out["estimated_time_s"] = int(st_on["estimated_time_s"])
     return out
-
