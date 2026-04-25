@@ -114,8 +114,11 @@ def kirimoto_executable() -> Optional[str]:
     candidates.append("kiri-moto")
     candidates.append("kirimoto-slicer")
     
+    # Check common server deployment path (e.g. Ubuntu root)
+    candidates.append("node /root/grid-apps/src/kiri/run/cli.js")
+    
     # Check if grid-apps is locally deployed
-    local_cli = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(__file__)), "grid-apps", "src", "kiri-run", "cli.js"))
+    local_cli = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(__file__)), "grid-apps", "src", "kiri", "run", "cli.js"))
     candidates.append(f"node {local_cli}")
 
     for p in candidates:
@@ -160,9 +163,20 @@ def run_kirimoto_slice(
     cmd.extend([f"--output={output_gcode_path}", model_path])
     
     timeout_s = float(os.getenv("KIRIMOTO_TIMEOUT_SECONDS", "120") or "120")
+    
+    # If using grid-apps, we must run it from its root directory or pass --dir
+    cwd = None
+    if "grid-apps" in exe:
+        # Extract the grid-apps directory path
+        try:
+            parts = exe.split("grid-apps")
+            cwd = parts[0].split("node ")[-1].strip() + "grid-apps"
+        except Exception:
+            pass
+
     try:
         # Use shell=True if it's a raw command like "kiri-moto"
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s, shell=True if not os.path.isabs(cmd[0]) else False)
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s, cwd=cwd, shell=True if not os.path.isabs(cmd[0]) else False)
         if res.returncode != 0:
             err = (res.stderr or res.stdout or "").strip()
             raise RuntimeError(f"Kiri:Moto 切片失败：{err[:300]}")
