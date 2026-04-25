@@ -407,6 +407,79 @@
                                     </div>
                                     <button id="slicer-preset-upload-btn" type="button" class="h-[30px] px-3 rounded-md bg-indigo-600 text-white text-xs hover:bg-indigo-700">上传</button>
                                 </div>
+                                <div class="mt-4 border-t border-gray-100 pt-3">
+                                    <h6 class="text-xs font-medium text-gray-700 mb-2">或者：通过参数生成预设 (基于通用打印机，如拓竹A1)</h6>
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                                        <div>
+                                            <label class="block text-xs text-gray-600">预设名称 <span class="text-red-500">*</span></label>
+                                            <input id="gen-preset-name" type="text" maxlength="60" class="mt-1 w-full border border-gray-300 rounded-sm text-xs px-2 py-1" placeholder="例如：A1-0.4喷嘴-标准" />
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs text-gray-600">打印机 X尺寸 (mm)</label>
+                                            <input id="gen-bed-width" type="number" value="256" min="50" max="1000" class="mt-1 w-full border border-gray-300 rounded-sm text-xs px-2 py-1" />
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs text-gray-600">打印机 Y尺寸 (mm)</label>
+                                            <input id="gen-bed-depth" type="number" value="256" min="50" max="1000" class="mt-1 w-full border border-gray-300 rounded-sm text-xs px-2 py-1" />
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs text-gray-600">打印机 Z尺寸 (mm)</label>
+                                            <input id="gen-bed-height" type="number" value="256" min="50" max="1000" class="mt-1 w-full border border-gray-300 rounded-sm text-xs px-2 py-1" />
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs text-gray-600">喷嘴大小 (mm)</label>
+                                            <select id="gen-nozzle-size" class="mt-1 w-full border border-gray-300 bg-white rounded-sm text-xs px-2 py-1">
+                                                <option value="0.2">0.2</option>
+                                                <option value="0.4" selected>0.4</option>
+                                                <option value="0.6">0.6</option>
+                                                <option value="0.8">0.8</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs text-gray-600">层高 (mm)</label>
+                                            <select id="gen-layer-height" class="mt-1 w-full border border-gray-300 bg-white rounded-sm text-xs px-2 py-1">
+                                                <option value="0.08">0.08 (极细)</option>
+                                                <option value="0.12">0.12 (精细)</option>
+                                                <option value="0.16">0.16 (最优)</option>
+                                                <option value="0.20" selected>0.20 (标准)</option>
+                                                <option value="0.24">0.24 (草稿)</option>
+                                                <option value="0.28">0.28 (快速)</option>
+                                                <option value="0.40">0.40 (极快)</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs text-gray-600">填充率 (%)</label>
+                                            <select id="gen-infill" class="mt-1 w-full border border-gray-300 bg-white rounded-sm text-xs px-2 py-1">
+                                                <option value="5">5%</option>
+                                                <option value="10">10%</option>
+                                                <option value="15" selected>15%</option>
+                                                <option value="20">20%</option>
+                                                <option value="25">25%</option>
+                                                <option value="30">30%</option>
+                                                <option value="40">40%</option>
+                                                <option value="50">50%</option>
+                                                <option value="60">60%</option>
+                                                <option value="80">80%</option>
+                                                <option value="100">100%</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs text-gray-600">墙层数</label>
+                                            <select id="gen-wall-count" class="mt-1 w-full border border-gray-300 bg-white rounded-sm text-xs px-2 py-1">
+                                                <option value="2">2</option>
+                                                <option value="3" selected>3</option>
+                                                <option value="4">4</option>
+                                                <option value="5">5</option>
+                                                <option value="6">6</option>
+                                                <option value="8">8</option>
+                                                <option value="10">10</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="mt-2 text-right">
+                                        <button id="slicer-preset-generate-btn" type="button" class="h-[30px] px-3 rounded-md bg-green-600 text-white text-xs hover:bg-green-700">生成并保存预设</button>
+                                    </div>
+                                </div>
                                 <div class="mt-3">
                                     <label class="block text-xs text-gray-600">报价默认使用的预设</label>
                                     <select id="cfg-slicer-preset-id" class="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md text-sm">
@@ -557,6 +630,16 @@
             const slicerPresetsMsg = document.getElementById('slicer-presets-msg');
             const slicerPresetsTbody = document.getElementById('slicer-presets-tbody');
             const cfgSlicerPresetId = document.getElementById('cfg-slicer-preset-id');
+            
+            const genPresetName = document.getElementById('gen-preset-name');
+            const genBedWidth = document.getElementById('gen-bed-width');
+            const genBedDepth = document.getElementById('gen-bed-depth');
+            const genBedHeight = document.getElementById('gen-bed-height');
+            const genNozzleSize = document.getElementById('gen-nozzle-size');
+            const genLayerHeight = document.getElementById('gen-layer-height');
+            const genInfill = document.getElementById('gen-infill');
+            const genWallCount = document.getElementById('gen-wall-count');
+            const slicerPresetGenerateBtn = document.getElementById('slicer-preset-generate-btn');
             
             const selectedFilesMap = new Map();
             const thumbnailMap = new Map();
@@ -883,6 +966,65 @@
                     }
                 } catch (e) {
                     setSlicerPresetsMsg(e.message || '上传失败', false);
+                }
+            }
+
+            async function generateSlicerPreset() {
+                if (!authToken) {
+                    openLoginModal();
+                    return;
+                }
+                const name = genPresetName ? String(genPresetName.value || "").trim() : "";
+                if (!name) {
+                    setSlicerPresetsMsg('请输入预设名称', false);
+                    return;
+                }
+                const bed_width = Number(genBedWidth.value) || 256;
+                const bed_depth = Number(genBedDepth.value) || 256;
+                const bed_height = Number(genBedHeight.value) || 256;
+                const nozzle_size = Number(genNozzleSize.value) || 0.4;
+                const layer_height = Number(genLayerHeight.value) || 0.2;
+                const infill = Number(genInfill.value) || 15;
+                const wall_count = Number(genWallCount.value) || 3;
+
+                const payload = {
+                    name,
+                    bed_width,
+                    bed_depth,
+                    bed_height,
+                    nozzle_size,
+                    layer_height,
+                    infill,
+                    wall_count
+                };
+
+                try {
+                    const resp = await authFetch('/api/slicer/presets/generate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (resp.status === 401) {
+                        if (userCenterModal) userCenterModal.classList.add('hidden');
+                        openLoginModal();
+                        return;
+                    }
+                    const data = await resp.json();
+                    if (!resp.ok) throw new Error((data && data.detail) ? String(data.detail) : '生成失败');
+                    setSlicerPresetsMsg('生成成功', true);
+                    if (genPresetName) genPresetName.value = "";
+                    const preset = data && data.preset ? data.preset : null;
+                    await fetchSlicerPresets();
+                    if (preset && preset.id) {
+                        quoteOptions.slicer_preset_id = Number(preset.id);
+                        saveSlicerPresetSelection();
+                        renderSlicerPresetsUI();
+                        if (selectedFilesMap.size > 0) {
+                            await reQuoteAllSelectedFiles('切片预设已生成，重算报价');
+                        }
+                    }
+                } catch (e) {
+                    setSlicerPresetsMsg(e.message || '生成失败', false);
                 }
             }
 
@@ -1563,6 +1705,7 @@
             membershipOrdersBtn.addEventListener('click', toggleMembershipOrders);
             if (slicerPresetsRefreshBtn) slicerPresetsRefreshBtn.addEventListener('click', fetchSlicerPresets);
             if (slicerPresetUploadBtn) slicerPresetUploadBtn.addEventListener('click', uploadSlicerPreset);
+            if (slicerPresetGenerateBtn) slicerPresetGenerateBtn.addEventListener('click', generateSlicerPreset);
             if (cfgSlicerPresetId) {
                 cfgSlicerPresetId.addEventListener('change', async () => {
                     const raw = String(cfgSlicerPresetId.value || "").trim();
