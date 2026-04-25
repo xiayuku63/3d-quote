@@ -1827,19 +1827,29 @@ class UserSettingsUpdate(BaseModel):
 
 @app.get("/api/user/settings")
 def get_user_settings(current_user=Depends(get_current_user)):
-    with get_db_conn() as conn:
-        row = conn.execute("SELECT materials, colors, pricing_config FROM users WHERE id = ?", (current_user["id"],)).fetchone()
-    raw_materials = json.loads(row["materials"]) if row and row["materials"] else DEFAULT_MATERIALS
-    colors = json.loads(row["colors"]) if row and row["colors"] else DEFAULT_COLORS
-    materials = normalize_materials(raw_materials, fallback_colors=colors)
-    raw_pricing = json.loads(row["pricing_config"]) if row and row["pricing_config"] else DEFAULT_PRICING_CONFIG
-    pricing_config = merge_pricing_config(raw_pricing)
-    derived_colors = []
-    for m in materials:
-        for c in m.get("colors", []):
-            if c not in derived_colors:
-                derived_colors.append(c)
-    return {"materials": materials, "colors": derived_colors, "pricing_config": pricing_config}
+    try:
+        with get_db_conn() as conn:
+            row = conn.execute("SELECT materials, colors, pricing_config FROM users WHERE id = ?", (current_user["id"],)).fetchone()
+        
+        if not row:
+            raise HTTPException(status_code=404, detail="USER_NOT_FOUND: 用户不存在")
+            
+        raw_materials = json.loads(row["materials"]) if row and row["materials"] else DEFAULT_MATERIALS
+        colors = json.loads(row["colors"]) if row and row["colors"] else DEFAULT_COLORS
+        materials = normalize_materials(raw_materials, fallback_colors=colors)
+        raw_pricing = json.loads(row["pricing_config"]) if row and row["pricing_config"] else DEFAULT_PRICING_CONFIG
+        pricing_config = merge_pricing_config(raw_pricing)
+        derived_colors = []
+        for m in materials:
+            for c in m.get("colors", []):
+                if c not in derived_colors:
+                    derived_colors.append(c)
+        return {"materials": materials, "colors": derived_colors, "pricing_config": pricing_config}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取用户配置失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"INTERNAL_ERROR: 获取用户配置失败 ({str(e)})")
 
 @app.put("/api/user/settings")
 def update_user_settings(payload: UserSettingsUpdate, request: Request, current_user=Depends(get_current_user)):
@@ -1892,26 +1902,30 @@ def update_user_settings(payload: UserSettingsUpdate, request: Request, current_
 
 @app.get("/api/slicer/presets")
 def api_list_slicer_presets(current_user=Depends(get_current_user)):
-    items = list_slicer_presets(int(current_user["id"]))
-    
-    # 验证物理文件是否存在，如果不存在则从返回列表中剔除（并静默从数据库中清理以保持同步）
-    user_folder = f"user_{current_user['id']}_{current_user['username']}"
-    user_configs_dir = os.path.join(_user_base_dir(), user_folder, "configs")
-    
-    valid_items = []
-    for item in items:
-        safe_preset_name = _sanitize_filename_component(item["name"], fallback="preset", max_len=60)
-        config_saved_path = os.path.join(user_configs_dir, f"{safe_preset_name}{item['ext']}")
-        if os.path.exists(config_saved_path):
-            valid_items.append(item)
-        else:
-            # 物理文件已丢失，同步清理数据库
-            try:
-                delete_slicer_preset(int(current_user["id"]), int(item["id"]))
-            except Exception:
-                pass
+    try:
+        items = list_slicer_presets(int(current_user["id"]))
+        
+        # 验证物理文件是否存在，如果不存在则从返回列表中剔除（并静默从数据库中清理以保持同步）
+        user_folder = f"user_{current_user['id']}_{current_user['username']}"
+        user_configs_dir = os.path.join(_user_base_dir(), user_folder, "configs")
+        
+        valid_items = []
+        for item in items:
+            safe_preset_name = _sanitize_filename_component(item["name"], fallback="preset", max_len=60)
+            config_saved_path = os.path.join(user_configs_dir, f"{safe_preset_name}{item['ext']}")
+            if os.path.exists(config_saved_path):
+                valid_items.append(item)
+            else:
+                # 物理文件已丢失，同步清理数据库
+                try:
+                    delete_slicer_preset(int(current_user["id"]), int(item["id"]))
+                except Exception:
+                    pass
 
-    return {"items": valid_items}
+        return {"items": valid_items}
+    except Exception as e:
+        logger.error(f"获取切片预设列表失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"INTERNAL_ERROR: 获取预设失败 ({str(e)})")
 
 
 @app.post("/api/slicer/presets")
@@ -1980,20 +1994,24 @@ def api_delete_slicer_preset(preset_id: int, request: Request, current_user=Depe
 
 @app.get("/api/auth/me")
 def auth_me(current_user=Depends(get_current_user)):
-    level, expires_ts = get_membership_effective(current_user)
-    return {
-        "id": current_user["id"],
-        "username": current_user["username"],
-        "created_at": current_user["created_at"],
-        "email": current_user["email"],
-        "phone": current_user["phone"],
-        "email_verified": bool(current_user["email_verified"] or 0),
-        "phone_verified": bool(current_user["phone_verified"] or 0),
-        "is_admin": is_admin_user(current_user),
-        "membership_level": level,
-        "membership_expires_at": expires_ts,
-        "is_member": level == "member",
-    }
+    try:
+        level, expires_ts = get_membership_effective(current_user)
+        return {
+            "id": current_user["id"],
+            "username": current_user["username"],
+            "created_at": current_user["created_at"],
+            "email": current_user["email"],
+            "phone": current_user["phone"],
+            "email_verified": bool(current_user["email_verified"] or 0),
+            "phone_verified": bool(current_user["phone_verified"] or 0),
+            "is_admin": is_admin_user(current_user),
+            "membership_level": level,
+            "membership_expires_at": expires_ts,
+            "is_member": level == "member",
+        }
+    except Exception as e:
+        logger.error(f"获取用户信息失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"INTERNAL_ERROR: 获取用户信息失败 ({str(e)})")
 
 
 @app.get("/api/admin/defaults")
@@ -2483,117 +2501,134 @@ async def get_quote(
     color: str = Form("White", min_length=1, max_length=40),
     current_user=Depends(get_current_user),
 ):
-    idem_key = get_idempotency_key_from_request(request)
-    if idem_key:
-        cached = try_get_idempotent_response(int(current_user["id"]), request, idem_key)
-        if cached:
-            status_code, payload = cached
-            write_audit_event(
-                action="quote.replay",
-                request=request,
-                user=current_user,
-                idempotency_key=idem_key,
-                detail={"status_code": status_code},
-            )
-            return JSONResponse(status_code=status_code, content=payload)
+    try:
+        idem_key = get_idempotency_key_from_request(request)
+        if idem_key:
+            cached = try_get_idempotent_response(int(current_user["id"]), request, idem_key)
+            if cached:
+                status_code, payload = cached
+                write_audit_event(
+                    action="quote.replay",
+                    request=request,
+                    user=current_user,
+                    idempotency_key=idem_key,
+                    detail={"status_code": status_code},
+                )
+                return JSONResponse(status_code=status_code, content=payload)
 
-    if not files:
-        raise HTTPException(status_code=400, detail="请至少上传一个模型文件")
-    if len(files) > MAX_FILES_PER_REQUEST:
-        raise HTTPException(status_code=400, detail=f"单次上传文件数量不能超过 {MAX_FILES_PER_REQUEST} 个")
+        if not files:
+            raise HTTPException(status_code=400, detail="请至少上传一个模型文件")
+        if len(files) > MAX_FILES_PER_REQUEST:
+            raise HTTPException(status_code=400, detail=f"单次上传文件数量不能超过 {MAX_FILES_PER_REQUEST} 个")
 
-    with get_db_conn() as conn:
-        row = conn.execute("SELECT materials, pricing_config FROM users WHERE id = ?", (current_user["id"],)).fetchone()
-    user_materials = json.loads(row["materials"]) if row and row["materials"] else DEFAULT_MATERIALS
-    pricing_config = json.loads(row["pricing_config"]) if row and row["pricing_config"] else DEFAULT_PRICING_CONFIG
+        with get_db_conn() as conn:
+            row = conn.execute("SELECT materials, pricing_config FROM users WHERE id = ?", (current_user["id"],)).fetchone()
+        user_materials = json.loads(row["materials"]) if row and row["materials"] else DEFAULT_MATERIALS
+        pricing_config = json.loads(row["pricing_config"]) if row and row["pricing_config"] else DEFAULT_PRICING_CONFIG
 
-    material_names = {str(m.get("name")) for m in user_materials if isinstance(m, dict)}
-    if material not in material_names:
-        raise HTTPException(status_code=400, detail="材料参数不合法")
+        material_names = {str(m.get("name")) for m in user_materials if isinstance(m, dict)}
+        if material not in material_names:
+            raise HTTPException(status_code=400, detail="材料参数不合法")
 
-    selected_material = next((m for m in user_materials if isinstance(m, dict) and str(m.get("name")) == material), None)
-    allowed_colors = []
-    if selected_material:
-        raw_colors = selected_material.get("colors", [])
-        if isinstance(raw_colors, list):
-            allowed_colors = [str(c).strip() for c in raw_colors if str(c).strip()]
-    if allowed_colors and color not in allowed_colors:
-        raise HTTPException(status_code=400, detail="颜色参数不合法")
+        selected_material = next((m for m in user_materials if isinstance(m, dict) and str(m.get("name")) == material), None)
+        allowed_colors = []
+        if selected_material:
+            raw_colors = selected_material.get("colors", [])
+            if isinstance(raw_colors, list):
+                allowed_colors = [str(c).strip() for c in raw_colors if str(c).strip()]
+        if allowed_colors and color not in allowed_colors:
+            raise HTTPException(status_code=400, detail="颜色参数不合法")
 
-    slicer_preset = None
-    if slicer_preset_id is not None:
-        slicer_preset = get_slicer_preset_by_id(int(current_user["id"]), int(slicer_preset_id))
-        if slicer_preset is None:
-            raise HTTPException(status_code=400, detail="切片预设不存在或无权限")
+        slicer_preset = None
+        if slicer_preset_id is not None:
+            slicer_preset = get_slicer_preset_by_id(int(current_user["id"]), int(slicer_preset_id))
+            if slicer_preset is None:
+                raise HTTPException(status_code=400, detail="切片预设不存在或无权限")
 
-    results = []
-    for file in files:
-        result = await process_single_file(
-            file,
-            material,
-            layer_height,
-            infill,
-            quantity,
-            color,
-            user_materials,
-            pricing_config,
-            slicer_preset=slicer_preset,
-            perimeters=wall_count,
-            current_user=current_user,
-        )
-        results.append(result)
-
-    success_items = [item for item in results if item["status"] == "success"]
-    failed_items = [item for item in results if item["status"] == "failed"]
-
-    membership_level, membership_expires_at = get_membership_effective(current_user)
-    discount_percent = float(MEMBER_DISCOUNT_PERCENT or 0.0)
-    if discount_percent < 0:
-        discount_percent = 0.0
-    if discount_percent > 90:
-        discount_percent = 90.0
-    if membership_level == "member" and discount_percent > 0 and success_items:
-        for item in success_items:
+        results = []
+        for file in files:
             try:
-                original = float(item.get("cost_cny") or 0.0)
-            except Exception:
-                original = 0.0
-            discounted = round(original * (1.0 - (discount_percent / 100.0)), 2)
-            item["cost_cny_original"] = round(original, 2)
-            item["cost_cny"] = discounted
-            breakdown = item.get("cost_breakdown")
-            if isinstance(breakdown, dict):
-                breakdown["member_discount_percent"] = round(discount_percent, 2)
-                breakdown["member_discount_cny"] = round(max(0.0, original - discounted), 2)
+                result = await process_single_file(
+                    file,
+                    material,
+                    layer_height,
+                    infill,
+                    quantity,
+                    color,
+                    user_materials,
+                    pricing_config,
+                    slicer_preset=slicer_preset,
+                    perimeters=wall_count,
+                    current_user=current_user,
+                )
+                results.append(result)
+            except Exception as e:
+                logger.error(f"处理文件 {file.filename} 时发生未捕获的错误: {str(e)}", exc_info=True)
+                results.append({
+                    "filename": file.filename,
+                    "status": "failed",
+                    "error": f"INTERNAL_ERROR: {str(e)}",
+                    "cost_cny": 0,
+                    "weight_g": 0,
+                    "estimated_time_h": 0,
+                })
 
-    payload = {
-        "total_files": len(results),
-        "success_count": len(success_items),
-        "failed_count": len(failed_items),
-        "summary_total_cost_cny": round(sum(item.get("cost_cny", 0) for item in success_items), 2),
-        "summary_total_weight_g": round(sum(item.get("weight_g", 0) for item in success_items), 2),
-        "summary_total_time_h": round(sum(item.get("estimated_time_h", 0) for item in success_items), 2),
-        "results": results,
-        "membership_level": membership_level,
-        "membership_expires_at": membership_expires_at,
-        "member_discount_percent": round(discount_percent, 2) if membership_level == "member" else 0.0,
-    }
-    write_audit_event(
-        action="quote.create",
-        request=request,
-        user=current_user,
-        idempotency_key=idem_key,
-        detail={
-            "files": len(results),
-            "success": len(success_items),
-            "failed": len(failed_items),
-            "material": material,
-            "quantity": quantity,
-        },
-    )
-    if idem_key:
-        save_idempotent_response(int(current_user["id"]), request, idem_key, 200, payload)
-    return payload
+        success_items = [item for item in results if item.get("status") == "success"]
+        failed_items = [item for item in results if item.get("status") == "failed"]
+
+        membership_level, membership_expires_at = get_membership_effective(current_user)
+        discount_percent = float(MEMBER_DISCOUNT_PERCENT or 0.0)
+        if discount_percent < 0:
+            discount_percent = 0.0
+        if discount_percent > 90:
+            discount_percent = 90.0
+        if membership_level == "member" and discount_percent > 0 and success_items:
+            for item in success_items:
+                try:
+                    original = float(item.get("cost_cny") or 0.0)
+                except Exception:
+                    original = 0.0
+                discounted = round(original * (1.0 - (discount_percent / 100.0)), 2)
+                item["cost_cny_original"] = round(original, 2)
+                item["cost_cny"] = discounted
+                breakdown = item.get("cost_breakdown")
+                if isinstance(breakdown, dict):
+                    breakdown["member_discount_percent"] = round(discount_percent, 2)
+                    breakdown["member_discount_cny"] = round(max(0.0, original - discounted), 2)
+
+        payload = {
+            "total_files": len(results),
+            "success_count": len(success_items),
+            "failed_count": len(failed_items),
+            "summary_total_cost_cny": round(sum(item.get("cost_cny", 0) for item in success_items), 2),
+            "summary_total_weight_g": round(sum(item.get("weight_g", 0) for item in success_items), 2),
+            "summary_total_time_h": round(sum(item.get("estimated_time_h", 0) for item in success_items), 2),
+            "results": results,
+            "membership_level": membership_level,
+            "membership_expires_at": membership_expires_at,
+            "member_discount_percent": round(discount_percent, 2) if membership_level == "member" else 0.0,
+        }
+        write_audit_event(
+            action="quote.create",
+            request=request,
+            user=current_user,
+            idempotency_key=idem_key,
+            detail={
+                "files": len(results),
+                "success": len(success_items),
+                "failed": len(failed_items),
+                "material": material,
+                "quantity": quantity,
+            },
+        )
+        if idem_key:
+            save_idempotent_response(int(current_user["id"]), request, idem_key, 200, payload)
+        return payload
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"处理报价请求失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"INTERNAL_ERROR: 报价请求失败 ({str(e)})")
 
 
 class FormulaValidateRequest(BaseModel):
