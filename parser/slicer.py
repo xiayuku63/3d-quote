@@ -51,6 +51,43 @@ def _grid_apps_root_candidates() -> list[str]:
     return out
 
 
+def _grid_apps_root_from_cli_script(script_path: str) -> Optional[str]:
+    sp = os.path.abspath(str(script_path or "").strip())
+    if not sp or not os.path.exists(sp):
+        return None
+    grid_root = os.path.abspath(os.path.join(os.path.dirname(sp), "..", "..", ".."))
+    if not os.path.isdir(grid_root):
+        return None
+    if not os.path.isdir(os.path.join(grid_root, "src")):
+        return None
+    return grid_root
+
+
+def _grid_apps_cli_missing_sources(grid_root: str) -> list[str]:
+    try:
+        import json
+        src_list_path = os.path.join(grid_root, "src", "cli", "kiri-source.json")
+        if not os.path.exists(src_list_path):
+            return [os.path.join("src", "cli", "kiri-source.json")]
+        with open(src_list_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, list):
+            return [os.path.join("src", "cli", "kiri-source.json")]
+        missing: list[str] = []
+        for entry in data:
+            if not isinstance(entry, str) or not entry.strip():
+                continue
+            rel = os.path.join("src", *(entry.split("/"))) + ".js"
+            abs_path = os.path.join(grid_root, rel)
+            if not os.path.exists(abs_path):
+                missing.append(rel.replace("\\", "/"))
+                if len(missing) >= 20:
+                    break
+        return missing
+    except Exception:
+        return []
+
+
 def parse_kirimoto_gcode_stats(gcode_path: str) -> dict:
     out = {"estimated_time_s": None, "filament_g": None, "filament_mm": None}
     try:
@@ -134,7 +171,11 @@ def kirimoto_executable() -> Optional[str]:
 
     for root in _grid_apps_root_candidates():
         local_cli = os.path.join(root, "src", "kiri", "run", "cli.js")
-        candidates.append(f"node {os.path.abspath(local_cli)}")
+        abs_cli = os.path.abspath(local_cli)
+        if " " in abs_cli:
+            candidates.append(f'node "{abs_cli}"')
+        else:
+            candidates.append(f"node {abs_cli}")
 
     candidates.append("node /root/grid-apps/src/kiri/run/cli.js")
 
@@ -152,6 +193,12 @@ def kirimoto_executable() -> Optional[str]:
                     continue
                 script_path = parts[1]
                 if os.path.exists(script_path):
+                    validate = os.getenv("KIRIMOTO_VALIDATE_GRID_APPS", "1").strip().lower() not in {"0", "false", "no", "off"}
+                    grid_root = _grid_apps_root_from_cli_script(script_path)
+                    if validate and grid_root:
+                        missing = _grid_apps_cli_missing_sources(grid_root)
+                        if missing:
+                            continue
                     return cand
                 continue
             if os.path.isabs(cand):
@@ -215,7 +262,7 @@ def run_kirimoto_slice(
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s, cwd=cwd, shell=False)
         if res.returncode != 0:
             err = (res.stderr or res.stdout or "").strip()
-            raise RuntimeError(f"Kiri:Moto 切片失败：{err[:300]}")
+            raise RuntimeError(f"Kiri:Moto 切片失败：{err[:300]} (exe={exe}, cwd={cwd or ''})")
     except FileNotFoundError:
          raise RuntimeError(f"未找到 Kiri:Moto CLI 命令: {exe}")
         
