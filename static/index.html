@@ -878,7 +878,7 @@
                         return;
                     }
                     const parsed = Number.parseInt(raw, 10);
-                    quoteOptions.slicer_preset_id = Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+                    quoteOptions.slicer_preset_id = Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
                 } catch (e) {
                     quoteOptions.slicer_preset_id = null;
                 }
@@ -887,7 +887,7 @@
             function saveSlicerPresetSelection() {
                 try {
                     const key = getSlicerPresetStorageKey();
-                    if (quoteOptions.slicer_preset_id) {
+                    if (quoteOptions.slicer_preset_id !== null && quoteOptions.slicer_preset_id !== undefined) {
                         localStorage.setItem(key, String(quoteOptions.slicer_preset_id));
                     } else {
                         localStorage.removeItem(key);
@@ -911,7 +911,7 @@
 
             function renderSlicerPresetsUI() {
                 if (cfgSlicerPresetId) {
-                    const selected = quoteOptions.slicer_preset_id ? String(quoteOptions.slicer_preset_id) : "";
+                    const selected = quoteOptions.slicer_preset_id !== null && quoteOptions.slicer_preset_id !== undefined ? String(quoteOptions.slicer_preset_id) : "";
                     cfgSlicerPresetId.innerHTML = [
                         '<option value="">不使用预设</option>',
                         ...(slicerPresets || []).map((p) => `<option value="${p.id}" ${String(p.id) === selected ? "selected" : ""}>${p.name} (#${p.id})</option>`)
@@ -959,7 +959,7 @@
                     const data = await resp.json();
                     if (!resp.ok) throw new Error((data && data.detail) ? String(data.detail) : '加载失败');
                     slicerPresets = Array.isArray(data.items) ? data.items : [];
-                    if (quoteOptions.slicer_preset_id) {
+                    if (quoteOptions.slicer_preset_id !== null && quoteOptions.slicer_preset_id !== undefined) {
                         const exists = slicerPresets.some((p) => Number(p.id) === Number(quoteOptions.slicer_preset_id));
                         if (!exists) {
                             quoteOptions.slicer_preset_id = null;
@@ -1086,7 +1086,7 @@
                         data = null;
                     }
                     if (!resp.ok) throw new Error((data && data.detail) ? String(data.detail) : '删除失败');
-                    if (quoteOptions.slicer_preset_id && Number(quoteOptions.slicer_preset_id) === Number(presetId)) {
+                    if (quoteOptions.slicer_preset_id !== null && quoteOptions.slicer_preset_id !== undefined && Number(quoteOptions.slicer_preset_id) === Number(presetId)) {
                         quoteOptions.slicer_preset_id = null;
                         saveSlicerPresetSelection();
                     }
@@ -1248,7 +1248,7 @@
                 formData.append("material", options.material);
                 formData.append("color", options.color);
                 formData.append("quantity", String(options.quantity));
-                if (quoteOptions.slicer_preset_id) {
+                if (quoteOptions.slicer_preset_id !== null && quoteOptions.slicer_preset_id !== undefined) {
                     formData.append("slicer_preset_id", String(quoteOptions.slicer_preset_id));
                 }
                 const response = await authFetch('/api/quote', { method: 'POST', body: formData });
@@ -1761,7 +1761,7 @@
                 cfgSlicerPresetId.addEventListener('change', async () => {
                     const raw = String(cfgSlicerPresetId.value || "").trim();
                     const parsed = raw ? Number.parseInt(raw, 10) : NaN;
-                    quoteOptions.slicer_preset_id = Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+                    quoteOptions.slicer_preset_id = Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
                     saveSlicerPresetSelection();
                     renderSlicerPresetsUI();
                     if (selectedFilesMap.size > 0) {
@@ -2326,7 +2326,7 @@
                 formData.append("material", quoteOptions.material);
                 formData.append("color", quoteOptions.color);
                 formData.append("quantity", String(quoteOptions.quantity));
-                if (quoteOptions.slicer_preset_id) {
+                if (quoteOptions.slicer_preset_id !== null && quoteOptions.slicer_preset_id !== undefined) {
                     formData.append("slicer_preset_id", String(quoteOptions.slicer_preset_id));
                 }
 

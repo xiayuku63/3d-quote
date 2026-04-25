@@ -1158,6 +1158,32 @@ def list_slicer_presets(user_id: int) -> list[dict]:
     return out
 
 
+SYSTEM_SLICER_PRESET_ID = 0
+SYSTEM_SLICER_PRESET_FILENAME = "A1-layer2-0.4mm-PLA.json"
+SYSTEM_SLICER_PRESET_DISPLAY_NAME = "A1-layer2-0.4mm-PLA (系统内置)"
+
+
+def get_system_slicer_preset() -> dict:
+    template_path = os.path.join(os.path.dirname(__file__), SYSTEM_SLICER_PRESET_FILENAME)
+    if not os.path.exists(template_path):
+        raise HTTPException(status_code=500, detail="系统预设文件丢失")
+    try:
+        with open(template_path, "rb") as f:
+            content = f.read()
+    except Exception:
+        raise HTTPException(status_code=500, detail="读取系统预设失败")
+    if not content:
+        raise HTTPException(status_code=500, detail="系统预设内容为空")
+    return {
+        "id": SYSTEM_SLICER_PRESET_ID,
+        "name": SYSTEM_SLICER_PRESET_DISPLAY_NAME,
+        "ext": ".json",
+        "content": bytes(content),
+        "created_at": "内置",
+        "is_default": True,
+    }
+
+
 def get_slicer_preset_by_id(user_id: int, preset_id: int) -> Optional[dict]:
     uid = int(user_id or 0)
     pid = int(preset_id or 0)
@@ -2702,9 +2728,13 @@ async def get_quote(
 
         slicer_preset = None
         if slicer_preset_id is not None:
-            slicer_preset = get_slicer_preset_by_id(int(current_user["id"]), int(slicer_preset_id))
-            if slicer_preset is None:
-                raise HTTPException(status_code=400, detail="切片预设不存在或无权限")
+            sid = int(slicer_preset_id)
+            if sid == SYSTEM_SLICER_PRESET_ID:
+                slicer_preset = get_system_slicer_preset()
+            else:
+                slicer_preset = get_slicer_preset_by_id(int(current_user["id"]), sid)
+                if slicer_preset is None:
+                    raise HTTPException(status_code=400, detail="切片预设不存在或无权限")
 
         results = []
         for file in files:
