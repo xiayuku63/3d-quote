@@ -280,6 +280,7 @@ def kirimoto_executable() -> Optional[str]:
 
     candidates.append("node /root/grid-apps/src/kiri/run/cli.js")
 
+    first_incomplete: Optional[str] = None
     for p in candidates:
         try:
             cand = str(p or "").strip()
@@ -299,6 +300,8 @@ def kirimoto_executable() -> Optional[str]:
                     if validate and grid_root:
                         missing = _grid_apps_cli_missing_sources(grid_root)
                         if missing:
+                            if first_incomplete is None:
+                                first_incomplete = cand
                             continue
                     return cand
                 continue
@@ -315,7 +318,7 @@ def kirimoto_executable() -> Optional[str]:
                 return os.path.abspath(cand)
         except Exception:
             continue
-    return None
+    return first_incomplete
 
 
 def run_kirimoto_slice(
@@ -408,6 +411,15 @@ def run_kirimoto_slice(
                             cmd.insert(2, f"--source={temp_source_path}")
                 except Exception:
                     pass
+                validate = os.getenv("KIRIMOTO_VALIDATE_GRID_APPS", "1").strip().lower() not in {"0", "false", "no", "off"}
+                if validate:
+                    missing = _grid_apps_cli_missing_sources(grid_root)
+                    if missing:
+                        raise RuntimeError(
+                            "检测到 grid-apps 尚未构建/不完整: "
+                            f"{grid_root} 缺少 {missing[:10]}。"
+                            "请在该目录执行：npm i && npm run webpack-ext && npm run webpack-src（需要 Node>=22）"
+                        )
 
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s, cwd=cwd, shell=False)
