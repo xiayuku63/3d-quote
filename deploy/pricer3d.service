@@ -1,0 +1,14 @@
+[Unit]
+Description=3D Printing Parts Automated Quoting System
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/3d-quote
+ExecStart=/root/3d-quote/venv/bin/uvicorn main:app --host 127.0.0.1 --port 5000
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

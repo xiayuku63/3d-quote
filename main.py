@@ -1833,7 +1833,7 @@ class MaterialItem(BaseModel):
     name: str = Field(..., min_length=1, max_length=40)
     density: float = Field(..., gt=0, le=10)
     price_per_kg: float = Field(..., ge=0, le=100000)
-    colors: List[str] = Field(default_factory=list, max_items=30)
+    colors: List[str] = Field(default_factory=list, max_length=30)
 
 class PricingConfig(BaseModel):
     machine_hourly_rate_cny: float = 15.0
@@ -1859,8 +1859,8 @@ class PricingConfig(BaseModel):
     total_cost_formula: str = DEFAULT_TOTAL_COST_FORMULA
 
 class UserSettingsUpdate(BaseModel):
-    materials: List[MaterialItem] = Field(..., min_items=1, max_items=100)
-    colors: Optional[List[str]] = Field(default=None, max_items=100)
+    materials: List[MaterialItem] = Field(..., min_length=1, max_length=100)
+    colors: Optional[List[str]] = Field(default=None, max_length=100)
     pricing_config: Optional[PricingConfig] = None
 
 @app.get("/api/user/settings")

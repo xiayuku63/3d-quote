@@ -6,7 +6,6 @@ BRANCH="main"
 
 echo "🚀 正在从 GitHub 拉取最新代码..."
 
-# 丢弃所有本地未提交的修改（部署服务器不需要保留本地改动）
 if [ -n "$(git status --porcelain)" ]; then
     echo "⚠️  检测到本地未提交的修改，正在丢弃..."
     git checkout -- .
@@ -14,8 +13,10 @@ if [ -n "$(git status --porcelain)" ]; then
     echo "✅ 本地修改已丢弃"
 fi
 
-# 拉取远程最新
 if git pull "$REMOTE" "$BRANCH"; then
+    echo "📦 同步 Python 依赖..."
+    ./venv/bin/pip install -q -r requirements.txt
+
     echo "🔄 正在重启 pricer3d 服务..."
     sudo systemctl restart pricer3d
 
