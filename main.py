@@ -622,8 +622,8 @@ DEFAULT_PRICING_CONFIG = {
     "difficulty_coefficient": 0.25,
     "difficulty_ratio_low": 0.8,
     "difficulty_ratio_high": 4.0,
-    "use_prusaslicer": 0,
-    "prusaslicer_support_mode": "diff",
+    "use_bambu": 0,
+    "bambu_support_mode": "diff",
     "support_price_per_g": 0.0,
     "time_overhead_min": 5.0,
     "time_vol_min_per_cm3": 0.8,
@@ -1563,7 +1563,7 @@ def record_login_failure(identifier: str) -> tuple[bool, int]:
 from parser.geometry import calculate_geometry
 
 
-from parser.slicer import parse_kirimoto_gcode_stats, kirimoto_executable, run_kirimoto_slice, kirimoto_support_diff_stats
+from parser.slicer import parse_bambu_gcode_stats, bambu_executable, run_bambu_slice, bambu_support_diff_stats
 
 from calculator.cost import (
     calculate_weight, 
@@ -2686,7 +2686,7 @@ async def get_quote(
     slicer_preset_id: Optional[int] = Form(default=None),
     quantity: int = Form(1, ge=1, le=5000),
     color: str = Form("White", min_length=1, max_length=40),
-    use_kirimoto: Optional[bool] = Form(default=None),
+    use_bambu: Optional[bool] = Form(default=None),
     current_user=Depends(get_current_user),
 ):
     try:
@@ -2714,8 +2714,8 @@ async def get_quote(
         user_materials = json.loads(row["materials"]) if row and row["materials"] else DEFAULT_MATERIALS
         pricing_config = json.loads(row["pricing_config"]) if row and row["pricing_config"] else DEFAULT_PRICING_CONFIG
 
-        if use_kirimoto is not None:
-            pricing_config["use_kirimoto"] = use_kirimoto
+        if use_bambu is not None:
+            pricing_config["use_bambu"] = use_bambu
 
         material_names = {str(m.get("name")) for m in user_materials if isinstance(m, dict)}
         if material not in material_names:

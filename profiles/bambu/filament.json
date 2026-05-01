@@ -1,0 +1,15 @@
+{
+    "type": "filament",
+    "name": "Bambu PLA Basic",
+    "from": "system",
+    "inherits": "Bambu PLA Basic @BBL A1",
+    "version": "1.10.0.0",
+    "filament_vendor": "Bambu Lab",
+    "filament_type": "PLA",
+    "filament_density": [1.24],
+    "filament_cost": [20.0],
+    "nozzle_temperature": [220],
+    "bed_temperature": [55],
+    "fan_max_speed": [100],
+    "filament_flow_ratio": [0.98]
+}

@@ -105,7 +105,7 @@
 
                                                 <div class="mt-4 flex flex-col items-center justify-center">
                                                     <label class="flex items-center gap-2 cursor-pointer bg-white px-4 py-2 border border-gray-200 rounded-md shadow-sm hover:bg-gray-50 transition-colors">
-                                                        <input type="checkbox" id="main-use-kirimoto" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                                                        <input type="checkbox" id="main-use-bambu" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
                                                         <span class="text-sm text-gray-800 font-medium">使用后台切片引擎精确估算</span>
                                                     </label>
                                                     <p class="text-xs text-amber-600 mt-2 bg-amber-50 px-3 py-1 rounded-full flex items-center gap-1">
@@ -742,8 +742,8 @@
                 difficulty_coefficient: 0.25,
                 difficulty_ratio_low: 0.8,
                 difficulty_ratio_high: 4.0,
-                use_kirimoto: 0,
-                kirimoto_support_mode: 'diff',
+                use_bambu: 0,
+                bambu_support_mode: 'diff',
                 support_price_per_g: 0.0,
                 time_overhead_min: 5.0,
                 time_vol_min_per_cm3: 0.8,
@@ -1266,9 +1266,9 @@
                 if (quoteOptions.slicer_preset_id !== null && quoteOptions.slicer_preset_id !== undefined) {
                     formData.append("slicer_preset_id", String(quoteOptions.slicer_preset_id));
                 }
-                const mainUseKirimoto = document.getElementById('main-use-kirimoto');
-                if (mainUseKirimoto) {
-                    formData.append("use_kirimoto", mainUseKirimoto.checked ? "true" : "false");
+                const mainUseBambu = document.getElementById('main-use-bambu');
+                if (mainUseBambu) {
+                    formData.append("use_bambu", mainUseBambu.checked ? "true" : "false");
                 }
                 const response = await authFetch('/api/quote', { method: 'POST', body: formData });
                 const data = await response.json();
@@ -1640,9 +1640,9 @@
 
                 refreshOptionsSummary();
 
-                const mainUseKirimoto = document.getElementById('main-use-kirimoto');
-                if (mainUseKirimoto && PRICING_CONFIG) {
-                    mainUseKirimoto.checked = !!(Number(PRICING_CONFIG.use_kirimoto) || 0) || PRICING_CONFIG.use_kirimoto === true;
+                const mainUseBambuCfg = document.getElementById('main-use-bambu');
+                if (mainUseBambuCfg && PRICING_CONFIG) {
+                    mainUseBambuCfg.checked = !!(Number(PRICING_CONFIG.use_bambu) || 0) || PRICING_CONFIG.use_bambu === true;
                 }
             }
 
@@ -1937,7 +1937,7 @@
                     difficulty_coefficient: Math.max(0, diffCoeffPercent) / 100.0,
                     difficulty_ratio_low: Number(cfgDifficultyRatioLow.value) || 0,
                     difficulty_ratio_high: Number(cfgDifficultyRatioHigh.value) || 0,
-                    kirimoto_support_mode: 'diff',
+                    bambu_support_mode: 'diff',
                     support_price_per_g: Number(cfgSupportPricePerG.value) || 0,
                     time_overhead_min: Number(cfgTimeOverheadMin.value) || 0,
                     time_vol_min_per_cm3: Number(cfgTimeVolMinPerCm3.value) || 0,
@@ -2351,9 +2351,9 @@
                 if (quoteOptions.slicer_preset_id !== null && quoteOptions.slicer_preset_id !== undefined) {
                     formData.append("slicer_preset_id", String(quoteOptions.slicer_preset_id));
                 }
-                const mainUseKirimoto = document.getElementById('main-use-kirimoto');
-                if (mainUseKirimoto) {
-                    formData.append("use_kirimoto", mainUseKirimoto.checked ? "true" : "false");
+                const mainUseBambu2 = document.getElementById('main-use-bambu');
+                if (mainUseBambu2) {
+                    formData.append("use_bambu", mainUseBambu2.checked ? "true" : "false");
                 }
 
                 const response = await authFetch('/api/quote', {
@@ -2372,8 +2372,8 @@
 
             function renderResultsTable() {
                 const tbody = document.getElementById('batch-results-body');
-                const mainUseKirimotoToggle = document.getElementById('main-use-kirimoto');
-                const showKiriStatus = !!(mainUseKirimotoToggle && mainUseKirimotoToggle.checked);
+                const mainUseBambuToggle = document.getElementById('main-use-bambu');
+                const showBambuStatus = !!(mainUseBambuToggle && mainUseBambuToggle.checked);
                 tbody.innerHTML = '';
                 if (!currentResults.length) {
                     tbody.innerHTML = `
@@ -2392,13 +2392,13 @@
                         : '-';
                     if (item.status === 'success') {
                         const breakdown = item && item.cost_breakdown && typeof item.cost_breakdown === 'object' ? item.cost_breakdown : null;
-                        const kiriUsed = !!(breakdown && breakdown.kirimoto_used);
-                        const kiriErrorRaw = breakdown && breakdown.kirimoto_error ? String(breakdown.kirimoto_error) : "";
-                        const kiriError = kiriErrorRaw ? escapeHtml(kiriErrorRaw) : "";
-                        const kiriExtraHtml = showKiriStatus
-                            ? (kiriUsed
-                                ? '<div class="text-[10px] text-indigo-600">Kiri:Moto</div>'
-                                : (kiriError ? `<div class="text-[10px] text-amber-700">Kiri:Moto失败：${kiriError}</div>` : ''))
+                        const bambuUsed = !!(breakdown && breakdown.bambu_used);
+                        const bambuErrorRaw = breakdown && breakdown.bambu_error ? String(breakdown.bambu_error) : "";
+                        const bambuError = bambuErrorRaw ? escapeHtml(bambuErrorRaw) : "";
+                        const bambuExtraHtml = showBambuStatus
+                            ? (bambuUsed
+                                ? '<div class="text-[10px] text-indigo-600">BambuSlicer</div>'
+                                : (bambuError ? `<div class="text-[10px] text-amber-700">BambuSlicer失败：${bambuError}</div>` : ''))
                             : '';
                         const markupPercentRaw = Number(item.difficulty_markup_percent);
                         let markupPercent = Number.isFinite(markupPercentRaw) ? markupPercentRaw : NaN;
@@ -2452,7 +2452,7 @@
                             <td class="px-2 py-1.5">¥ ${item.cost_cny}</td>
                             <td data-role="status-cell" class="px-2 py-1.5 text-green-600">
                                 <div>成功</div>
-                                ${kiriExtraHtml}
+                                ${bambuExtraHtml}
                             </td>
                             <td class="px-2 py-1.5">
                                 <button type="button" data-delete-file="${item.filename}" class="text-[11px] text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 rounded px-2 py-0.5">删除</button>
@@ -2548,9 +2548,9 @@
                 }
             });
 
-            const mainUseKirimoto = document.getElementById('main-use-kirimoto');
-            if (mainUseKirimoto) {
-                mainUseKirimoto.addEventListener('change', async () => {
+            const mainUseBambuListener = document.getElementById('main-use-bambu');
+            if (mainUseBambuListener) {
+                mainUseBambuListener.addEventListener('change', async () => {
                     if (!selectedFilesMap.size) return;
                     if (!authToken) {
                         pendingQuoteFiles = Array.from(selectedFilesMap.values());
@@ -2559,7 +2559,7 @@
                         openLoginModal();
                         return;
                     }
-                    await reQuoteAllSelectedFiles(mainUseKirimoto.checked ? '启用Kiri切片估算' : '关闭Kiri切片估算');
+                    await reQuoteAllSelectedFiles(mainUseBambuListener.checked ? '启用BambuSlicer切片估算' : '关闭BambuSlicer切片估算');
                 });
             }
 

@@ -11,7 +11,7 @@ import logging
 from typing import List, Optional
 from fastapi import UploadFile, Request
 
-from parser.slicer import run_kirimoto_slice, kirimoto_support_diff_stats
+from parser.slicer import run_bambu_slice, bambu_support_diff_stats
 
 logger = logging.getLogger(__name__)
 
@@ -214,7 +214,7 @@ def validate_formula_expression(expr: str) -> tuple[bool, str, list[str]]:
     return True, "", sorted(used_vars)
 
 
-def _kirimoto_sets_from_quote_params(layer_height_mm: float, infill_percent: int, perimeters: Optional[int]) -> dict[str, str]:
+def _bambu_sets_from_quote_params(layer_height_mm: float, infill_percent: int, perimeters: Optional[int]) -> dict[str, str]:
     d = {
         "sliceHeight": str(layer_height_mm),
         "sliceFillSparse": str(max(0.0, min(1.0, infill_percent / 100.0)))
@@ -280,48 +280,53 @@ def calculate_cost(
     difficulty_multiplier = 1.0 + (difficulty_coefficient * difficulty_score)
     difficulty_markup_percent = max(0.0, (difficulty_multiplier - 1.0) * 100.0)
 
-    raw_use = cfg.get("use_kirimoto") or cfg.get("use_curaengine") or cfg.get("use_prusaslicer") # fallback to old key if any
-    use_kirimoto = False
+    raw_use = cfg.get("use_bambu") or cfg.get("use_kirimoto") or cfg.get("use_curaengine") or cfg.get("use_prusaslicer")
+    use_bambu = False
     try:
-        use_kirimoto = bool(int(raw_use))
+        use_bambu = bool(int(raw_use))
     except Exception:
-        use_kirimoto = str(raw_use or "").strip().lower() in {"1", "true", "yes", "y", "on"}
-    kirimoto_support_mode = str(cfg.get("kirimoto_support_mode") or cfg.get("curaengine_support_mode") or cfg.get("prusaslicer_support_mode") or "diff").strip().lower() or "diff"
-    
+        use_bambu = str(raw_use or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+    bambu_support_mode = str(cfg.get("bambu_support_mode") or cfg.get("kirimoto_support_mode") or cfg.get("curaengine_support_mode") or cfg.get("prusaslicer_support_mode") or "diff").strip().lower() or "diff"
+
     slicer_time_s = None
     slicer_filament_g_per_part = None
     preset_used = None
-    kirimoto_error_msg = None
-    support_weight_g_per_part = 0.0  # Initialize variable to prevent UnboundLocalError
-    if use_kirimoto and model_path and os.path.exists(model_path):
+    bambu_error_msg = None
+    support_weight_g_per_part = 0.0
+    if use_bambu and model_path and os.path.exists(model_path):
         preset_tmp_path = None
         try:
-            logger.info(f"Kiri:Moto enabled, slicing: {model_path}")
+            logger.info(f"Bambu Slicer enabled, slicing: {model_path}")
             base_name = os.path.splitext(os.path.basename(model_path))[0]
             output_prefix = _sanitize_filename_component(base_name, fallback="model", max_len=60)
             user_folder = f"user_{current_user['id']}_{current_user['username']}" if current_user else "anonymous"
-            # 结构: user/user_1_admin/outputs/20260421/8f3c..._model/
             outputs_job_dir = os.path.join(_user_base_dir(), user_folder, "outputs", _date_folder_utc(), output_prefix)
             os.makedirs(outputs_job_dir, exist_ok=True)
-            
+
             extra_loads: list[str] = []
-            extra_sets = _kirimoto_sets_from_quote_params(layer_height_mm, infill_percent, perimeters)
+            extra_sets = _bambu_sets_from_quote_params(layer_height_mm, infill_percent, perimeters)
             if slicer_preset and isinstance(slicer_preset, dict) and slicer_preset.get("content"):
                 try:
-                    ext = str(slicer_preset.get("ext") or ".ini").strip().lower()
-                    if ext not in {".ini", ".cfg", ".json"}:
-                        ext = ".cfg"
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tf:
-                        tf.write(bytes(slicer_preset.get("content")))
+                    ext = str(slicer_preset.get("ext") or ".json").strip().lower()
+                    if ext not in {".json", ".ini", ".cfg"}:
+                        ext = ".json"
+                    raw_content = slicer_preset.get("content")
+                    if isinstance(raw_content, str):
+                        preset_data = raw_content
+                    else:
+                        import json as _json
+                        preset_data = _json.dumps(raw_content)
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=ext, mode="w", encoding="utf-8") as tf:
+                        tf.write(preset_data)
                         preset_tmp_path = tf.name
                     extra_loads.append(preset_tmp_path)
                     preset_used = str(slicer_preset.get("name") or "") or None
                 except Exception:
                     preset_tmp_path = None
-            if kirimoto_support_mode == "diff":
-                st = kirimoto_support_diff_stats(
+            if bambu_support_mode == "diff":
+                st = bambu_support_diff_stats(
                     model_path,
-                    extra_loads=extra_loads,
+                    extra_loads=extra_loads if extra_loads else None,
                     extra_sets=extra_sets,
                     output_dir=outputs_job_dir,
                     output_prefix=output_prefix,
@@ -334,8 +339,8 @@ def calculate_cost(
                     except Exception:
                         slicer_filament_g_per_part = None
             else:
-                gcode_path = os.path.join(outputs_job_dir, f"{output_prefix}.gcode")
-                st = run_kirimoto_slice(model_path, gcode_path, extra_loads=extra_loads, extra_sets=extra_sets)
+                output_3mf_path = os.path.join(outputs_job_dir, f"{output_prefix}.gcode.3mf")
+                st = run_bambu_slice(model_path, output_3mf_path, extra_loads=extra_loads if extra_loads else None, extra_sets=extra_sets)
                 slicer_time_s = int(st.get("estimated_time_s")) if st.get("estimated_time_s") is not None else None
                 if st.get("filament_g") is not None:
                     try:
@@ -343,11 +348,10 @@ def calculate_cost(
                     except Exception:
                         slicer_filament_g_per_part = None
         except Exception as e:
-            logger.error(f"Kiri:Moto failed for {model_path}: {e}")
-            # fallback to base estimation if slicer fails
+            logger.error(f"Bambu Slicer failed for {model_path}: {e}")
             slicer_time_s = None
             slicer_filament_g_per_part = None
-            kirimoto_error_msg = str(e)
+            bambu_error_msg = str(e)
         finally:
             try:
                 if preset_tmp_path and os.path.exists(preset_tmp_path):
@@ -431,12 +435,12 @@ def calculate_cost(
         "support_weight_g_per_part": round(support_weight_g_per_part, 3),
         "support_price_per_g": round(support_price_per_g, 4),
         "support_cost_per_part_cny": round(support_cost_per_part_cny, 2),
-        "kirimoto_used": bool(use_kirimoto and slicer_time_s is not None),
-        "kirimoto_error": kirimoto_error_msg,
-        "kirimoto_filament_g_per_part": round(float(slicer_filament_g_per_part), 3) if slicer_filament_g_per_part is not None else None,
-        "kirimoto_preset_used": preset_used,
-        "kirimoto_sets": _kirimoto_sets_from_quote_params(layer_height_mm, infill_percent, perimeters) if use_kirimoto else {},
-        "kirimoto_estimated_time_s": int(slicer_time_s) if slicer_time_s is not None else None,
+        "bambu_used": bool(use_bambu and slicer_time_s is not None),
+        "bambu_error": bambu_error_msg,
+        "bambu_filament_g_per_part": round(float(slicer_filament_g_per_part), 3) if slicer_filament_g_per_part is not None else None,
+        "bambu_preset_used": preset_used,
+        "bambu_sets": _bambu_sets_from_quote_params(layer_height_mm, infill_percent, perimeters) if use_bambu else {},
+        "bambu_estimated_time_s": int(slicer_time_s) if slicer_time_s is not None else None,
         "setup_fee_cny": round(setup_fee, 2),
         "min_job_fee_cny": round(min_job_fee, 2),
         "subtotal_cny": round(subtotal, 2),
@@ -522,7 +526,7 @@ async def process_single_file(
         try:
             filament_g = None
             if isinstance(breakdown, dict):
-                filament_g = breakdown.get("kirimoto_filament_g_per_part")
+                filament_g = breakdown.get("bambu_filament_g_per_part")
             if filament_g is not None:
                 total_weight = round(float(filament_g) * quantity, 2)
         except Exception:

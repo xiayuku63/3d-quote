@@ -1,0 +1,17 @@
+{
+    "type": "process",
+    "name": "0.20mm Standard",
+    "from": "system",
+    "inherits": "0.20mm Standard @BBL A1",
+    "version": "1.10.0.0",
+    "layer_height": 0.2,
+    "fill_density": "20%",
+    "sparse_infill_density": "20%",
+    "wall_loops": 3,
+    "top_shell_layers": 5,
+    "bottom_shell_layers": 5,
+    "enable_support": false,
+    "support_type": "normal(auto)",
+    "skirt_loops": 1,
+    "brim_width": 0
+}

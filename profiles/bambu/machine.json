@@ -1,0 +1,18 @@
+{
+    "type": "machine",
+    "name": "Bambu Lab A1 0.4 nozzle",
+    "from": "system",
+    "inherits": "Bambu Lab A1 0.4 nozzle",
+    "version": "1.10.0.0",
+    "printable_area": [256, 256, 256],
+    "printer_technology": "FFF",
+    "bed_exclude_area": ["0x0"],
+    "machine_extruder_count": 1,
+    "nozzle_diameter": [0.4],
+    "machine_max_acceleration_extruding": [5000],
+    "machine_max_acceleration_retracting": [5000],
+    "machine_max_acceleration_x": [5000],
+    "machine_max_acceleration_y": [5000],
+    "machine_max_speed_x": [500],
+    "machine_max_speed_y": [500]
+}
