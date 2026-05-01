@@ -4,6 +4,8 @@ set -euo pipefail
 REMOTE="origin"
 BRANCH="main"
 
+cd "$(dirname "$0")/.."
+
 echo "🚀 正在从 GitHub 拉取最新代码..."
 
 if [ -n "$(git status --porcelain)" ]; then
@@ -14,7 +16,10 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 
 if git pull "$REMOTE" "$BRANCH"; then
-    echo "📦 同步 Python 依赖..."
+    echo "� 修复脚本权限..."
+    chmod +x deploy/*.sh 2>/dev/null || true
+
+    echo "�📦 同步 Python 依赖..."
     ./venv/bin/pip install -q -r requirements.txt
 
     echo "🔄 正在重启 pricer3d 服务..."
