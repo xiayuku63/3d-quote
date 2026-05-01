@@ -115,35 +115,35 @@ do_uninstall() {
 check_prereqs() {
     log_info "检查系统环境 ..."
 
-    local missing=()
+    local missing_cmds=()
 
     for cmd in curl jq tar; do
         if ! command -v "$cmd" &>/dev/null; then
-            missing+=("$cmd")
+            missing_cmds+=("$cmd")
         fi
     done
 
-    if [ ${#missing[@]} -gt 0 ]; then
-        log_warn "缺失命令: ${missing[*]}"
+    if [ ${#missing_cmds[@]} -gt 0 ]; then
+        log_warn "缺失命令: ${missing_cmds[*]}"
         if [ "${SKIP_APT_DEPS:-0}" = "1" ]; then
             log_warn "SKIP_APT_DEPS=1，跳过自动安装"
         elif command -v apt-get &>/dev/null; then
-            log_info "apt-get install ${missing[*]} ..."
+            log_info "apt-get install ${missing_cmds[*]} ..."
             sudo apt-get update -qq
-            sudo apt-get install -y -qq "${missing[@]}"
+            sudo apt-get install -y -qq "${missing_cmds[@]}"
         elif command -v dnf &>/dev/null; then
-            sudo dnf install -y "${missing[@]}"
+            sudo dnf install -y "${missing_cmds[@]}"
         elif command -v yum &>/dev/null; then
-            sudo yum install -y "${missing[@]}"
+            sudo yum install -y "${missing_cmds[@]}"
         else
-            log_err "无法自动安装依赖: ${missing[*]}"
+            log_err "无法自动安装依赖: ${missing_cmds[*]}"
             exit 1
         fi
     fi
 
-    # Check xvfb (required for headless CLI)
+    # Install xvfb (required for headless CLI on servers without X11)
     if ! command -v xvfb-run &>/dev/null; then
-        log_warn "xvfb 未安装 (无图形服务器 headless 切片必需)"
+        log_info "xvfb 未安装 (headless 切片必需)"
         if [ "${SKIP_APT_DEPS:-0}" != "1" ] && command -v apt-get &>/dev/null; then
             sudo apt-get install -y -qq xvfb
         elif [ "${SKIP_APT_DEPS:-0}" != "1" ] && command -v dnf &>/dev/null; then
@@ -151,38 +151,106 @@ check_prereqs() {
         fi
     fi
 
-    # Check and install shared libraries commonly missing for AppImage
-    if command -v apt-get &>/dev/null && [ "${SKIP_APT_DEPS:-0}" != "1" ]; then
-        local libs=()
-
-        for lib_pair in \
-            "libwebkit2gtk-4.0-dev|libwebkit2gtk" \
-            "libwebkit2gtk-4.1-dev|libwebkit2gtk" \
-            "libavcodec61|libavcodec" \
-            "libavformat61|libavformat" \
-            "libswscale8|libswscale" \
-            "libfuse2|fuse" \
-        ; do
-            local pkg="${lib_pair%%|*}"
-            local label="${lib_pair##*|}"
-            if dpkg -s "$pkg" &>/dev/null 2>&1; then
-                continue
-            fi
-            if apt-cache show "$pkg" &>/dev/null 2>&1; then
-                libs+=("$pkg")
-            else
-                log_warn "$label 未安装，且 $pkg 不在当前发行版仓库中 (AppImage 自带依赖可能无法工作)"
-            fi
-        done
-
-        if [ ${#libs[@]} -gt 0 ]; then
-            log_info "安装缺失的共享库: ${libs[*]}"
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq "${libs[@]}" 2>/dev/null || log_warn "部分库安装失败，请手动检查"
-        fi
-    fi
+    # Install libraries AppImage binaries commonly need
+    _install_missing_libs
 
     log_ok "系统环境检查完成"
+}
+
+# Dynamically find and install missing shared libraries
+_install_missing_libs() {
+    [ "${SKIP_APT_DEPS:-0}" = "1" ] && return
+
+    if command -v apt-get &>/dev/null; then
+        local libs_to_install=()
+
+        # fuse2 — required to extract AppImage
+        if ! dpkg -s libfuse2 &>/dev/null 2>&1; then
+            if apt-cache show libfuse2 &>/dev/null 2>&1; then
+                libs_to_install+=("libfuse2")
+            fi
+        fi
+
+        # webkit2gtk — required by wxWidgets
+        if ! ldconfig -p 2>/dev/null | grep -q libwebkit2gtk; then
+            local wk=""
+            for candidate in libwebkit2gtk-4.1-dev libwebkit2gtk-4.0-dev; do
+                if apt-cache show "$candidate" &>/dev/null 2>&1; then
+                    wk="$candidate"
+                    break
+                fi
+            done
+            if [ -n "$wk" ]; then
+                libs_to_install+=("$wk")
+            else
+                log_warn "libwebkit2gtk 不可用，切片可能失败"
+            fi
+        fi
+
+        # OpenGL / OSMesa — required for headless rendering
+        if ! ldconfig -p 2>/dev/null | grep -q libOSMesa; then
+            local osmesa=""
+            for candidate in libosmesa8 libosmesa6-dev libosmesa6; do
+                if apt-cache show "$candidate" &>/dev/null 2>&1; then
+                    osmesa="$candidate"
+                    break
+                fi
+            done
+            if [ -n "$osmesa" ]; then
+                libs_to_install+=("$osmesa")
+            else
+                log_warn "libOSMesa 不可用，headless 切片可能失败"
+            fi
+        fi
+
+        # ffmpeg shared libs — Bambu Studio AppImage is linked against these
+        if ! ldconfig -p 2>/dev/null | grep -q libavcodec; then
+            local ff=""
+            for candidate in \
+                libavcodec61 libavcodec60 libavcodec59 libavcodec58 libavcodec57 \
+                libavcodec-extra61 libavcodec-extra60 libavcodec-extra59 libavcodec-extra58 \
+            ; do
+                if apt-cache show "$candidate" &>/dev/null 2>&1; then
+                    ff="$candidate"
+                    break
+                fi
+            done
+            if [ -n "$ff" ]; then
+                libs_to_install+=("$ff")
+            else
+                log_warn "libavcodec 不可用，请升级到 Ubuntu 24.04+ 或手动安装 ffmpeg 7"
+            fi
+        else
+            local base_av=""
+            base_av="$(ldconfig -p 2>/dev/null | grep -oP 'libavcodec\.so\.\K[0-9]+' | sort -n | tail -1 || true)"
+            for companion in \
+                "libavformat${base_av}"  \
+                "libswscale$(( ${base_av:-0} - 53 ))" \
+                "libavutil$(( ${base_av:-0} - 2 ))" \
+            ; do
+                if apt-cache show "$companion" &>/dev/null 2>&1 && ! dpkg -s "$companion" &>/dev/null 2>&1; then
+                    libs_to_install+=("$companion")
+                fi
+            done
+        fi
+
+        if [ ${#libs_to_install[@]} -gt 0 ]; then
+            log_info "安装系统共享库: ${libs_to_install[*]}"
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq "${libs_to_install[@]}" || log_warn "部分库安装失败"
+        fi
+
+    elif command -v dnf &>/dev/null; then
+        # Fedora / RHEL
+        local rpms=()
+        rpm -q fuse-libs      &>/dev/null || rpms+=(fuse-libs)
+        rpm -q webkit2gtk4.1  &>/dev/null || rpm -q webkit2gtk4.0 &>/dev/null || rpms+=(webkit2gtk4.1)
+        rpm -q mesa-libOSMesa &>/dev/null || rpms+=(mesa-libOSMesa)
+        rpm -q ffmpeg-libs    &>/dev/null || rpms+=(ffmpeg-libs)
+        if [ ${#rpms[@]} -gt 0 ]; then
+            sudo dnf install -y "${rpms[@]}"
+        fi
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -432,6 +500,26 @@ verify_installation() {
         fi
     fi
 
+    # Check missing shared libraries
+    local raw_exe=""
+    if [ -f "$INSTALL_DIR/bin/bambu-studio" ]; then
+        raw_exe="$INSTALL_DIR/bin/bambu-studio"
+    else
+        raw_exe="$(command -v "$exe" 2>/dev/null || echo "")"
+    fi
+    if [ -n "$raw_exe" ] && [ -x "$raw_exe" ] && ! echo "$raw_exe" | grep -q xvfb; then
+        local missing_libs
+        missing_libs="$(ldd "$raw_exe" 2>/dev/null | grep "not found" || true)"
+        if [ -n "$missing_libs" ]; then
+            log_warn "缺失共享库:"
+            echo "$missing_libs" | while read -r line; do echo "       $line"; done
+            log_info "请尝试: apt-get install libavcodec61 libswscale8 libavutil59 libosmesa8"
+            log_info "如果 apt 找不到这些包，可能需要升级到 Ubuntu 24.04+"
+        else
+            log_ok "所有共享库已满足"
+        fi
+    fi
+
     log_info "运行: $exe --help"
     local help_output
     help_output=$("$exe" --help 2>&1) || true
@@ -440,7 +528,7 @@ verify_installation() {
         log_ok "Bambu Studio CLI 工作正常"
     else
         log_warn "--help 输出不包含预期的 CLI 参数"
-        log_info "输出内容 (前500字符):"
+        log_info "输出内容 (前 500 字符):"
         echo "$help_output" | head -c 500
         echo
     fi
