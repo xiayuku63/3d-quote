@@ -1159,8 +1159,8 @@ def list_slicer_presets(user_id: int) -> list[dict]:
 
 
 SYSTEM_SLICER_PRESET_ID = 0
-SYSTEM_SLICER_PRESET_FILENAME = "A1-layer2-0.4mm-PLA.json"
-SYSTEM_SLICER_PRESET_DISPLAY_NAME = "A1-layer2-0.4mm-PLA (系统内置)"
+SYSTEM_SLICER_PRESET_FILENAME = os.path.join("profiles", "bambu", "process.json")
+SYSTEM_SLICER_PRESET_DISPLAY_NAME = "Bambu A1 0.20mm Standard (系统内置)"
 
 
 def get_system_slicer_preset() -> dict:
@@ -1952,7 +1952,7 @@ def api_list_slicer_presets(current_user=Depends(get_current_user)):
         # 添加系统内置预设 A1
         valid_items.append({
             "id": 0,
-            "name": "A1-layer2-0.4mm-PLA (系统内置)",
+            "name": "Bambu A1 0.20mm Standard (系统内置)",
             "ext": ".json",
             "created_at": "内置",
             "is_default": True
@@ -2005,8 +2005,8 @@ def api_generate_slicer_preset(payload: SlicerPresetGenerateRequest, request: Re
     preset_name = payload.name.strip()
     ext = ".json"
     
-    # 读取 A1 模板文件作为基础
-    template_path = os.path.join(os.path.dirname(__file__), "A1-layer2-0.4mm-PLA.json")
+    # 读取 profiles/bambu/process.json 作为基础模板
+    template_path = os.path.join(os.path.dirname(__file__), "profiles", "bambu", "process.json")
     try:
         with open(template_path, "r", encoding="utf-8") as f:
             preset_data = json.load(f)
@@ -2101,10 +2101,10 @@ def api_download_slicer_preset(preset_id: int, token: str):
         raise HTTPException(status_code=401, detail="用户不存在")
         
     if preset_id == 0:
-        template_path = os.path.join(os.path.dirname(__file__), "A1-layer2-0.4mm-PLA.json")
+        template_path = os.path.join(os.path.dirname(__file__), "profiles", "bambu", "process.json")
         if not os.path.exists(template_path):
             raise HTTPException(status_code=404, detail="系统预设文件丢失")
-        return FileResponse(template_path, filename="A1-layer2-0.4mm-PLA.json")
+        return FileResponse(template_path, filename="Bambu_A1_0.20mm_Standard.json")
         
     preset = get_slicer_preset_by_id(int(current_user["id"]), int(preset_id))
     if not preset:

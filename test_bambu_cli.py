@@ -4,7 +4,6 @@ BambuSlicer CLI Integration Test
 Usage:
     python test_bambu_cli.py
     python test_bambu_cli.py --exe "C:\Program Files\Bambu Studio\bambu-studio.exe"
-    python test_bambu_cli.py --model test_kiri2.gcode  (wrong format - skipped)
     python test_bambu_cli.py --model path/to/model.stl
 """
 
@@ -239,24 +238,11 @@ def main():
 
     model_path = args.model
     if not model_path:
-        for candidate in [
-            "test_kiri2.gcode",
-        ]:
-            if os.path.exists(candidate):
-                model_path = candidate
-                break
-
-    if model_path and model_path.lower().endswith(".gcode"):
-        print_warn(f"G-code file cannot be sliced, skipping: {model_path}")
-        model_path = None
-
-    if not model_path:
         print("\n" + "=" * 60)
-        print("  No valid 3D model found for slicing test")
+        print("  No 3D model file provided for slicing test")
         print("=" * 60)
         print("[INFO] Provide a .stl/.obj/.3mf file:")
-        print("  python test_bambu_cli.py --model path/to/your_model.stl")
-        print()
+        print("  python test_bambu_cli.py --model path/to/your_model.stl\n")
         test_gcode_parsing()
         return 0
 
