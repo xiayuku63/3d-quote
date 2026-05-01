@@ -14,6 +14,8 @@ set -euo pipefail
 #   INSTALL_DIR        安装目标目录 (默认 /opt/bambu-studio)
 #   BAMBU_VERSION      指定版本号 (默认自动获取最新版)
 #   GITHUB_TOKEN       避免 API 限流 (可选)
+#   GITHUB_MIRRORS     逗号分隔的下载镜像 (默认 ghproxy.com,ghproxy.net)
+#   BAMBU_DIRECT=1     跳过镜像，直连 GitHub 下载
 #   SKIP_APT_DEPS      跳过系统依赖安装 (默认尝试安装)
 #   PROFILE_SRC        拷贝 profiles 的源目录 (默认项目内 profiles/bambu/)
 #
@@ -50,6 +52,27 @@ detect_distro() {
 }
 
 DISTRO="$(detect_distro)"
+
+# GitHub mirror config (default: use domestic mirror for faster download)
+#   GITHUB_MIRRORS — 逗号分隔的下载镜像列表 (留空则直连 GitHub)
+#   BAMBU_DIRECT=1  — 跳过所有镜像，直接连接 GitHub
+GITHUB_MIRRORS="${GITHUB_MIRRORS-https://mirror.ghproxy.com/,https://ghproxy.net/,https://gh.api.99988866.xyz/}"
+
+build_download_urls() {
+    local raw_path="$1"
+    local urls=()
+    local mirrors=()
+
+    if [ "${BAMBU_DIRECT:-0}" != "1" ] && [ -n "$GITHUB_MIRRORS" ]; then
+        IFS=',' read -ra mirrors <<< "$GITHUB_MIRRORS"
+        for m in "${mirrors[@]}"; do
+            m="${m%/}"
+            urls+=("${m}/${raw_path}")
+        done
+    fi
+    urls+=("$raw_path")
+    printf '%s\n' "${urls[@]}"
+}
 
 # Color helpers
 RED='\033[0;31m'
@@ -101,36 +124,61 @@ check_prereqs() {
     done
 
     if [ ${#missing[@]} -gt 0 ]; then
-        log_warn "缺失依赖: ${missing[*]}"
+        log_warn "缺失命令: ${missing[*]}"
         if [ "${SKIP_APT_DEPS:-0}" = "1" ]; then
-            log_warn "SKIP_APT_DEPS=1，跳过自动安装依赖"
+            log_warn "SKIP_APT_DEPS=1，跳过自动安装"
         elif command -v apt-get &>/dev/null; then
-            log_info "尝试 apt-get 安装依赖 ..."
+            log_info "apt-get install ${missing[*]} ..."
             sudo apt-get update -qq
             sudo apt-get install -y -qq "${missing[@]}"
         elif command -v dnf &>/dev/null; then
-            log_info "尝试 dnf 安装依赖 ..."
             sudo dnf install -y "${missing[@]}"
         elif command -v yum &>/dev/null; then
-            log_info "尝试 yum 安装依赖 ..."
             sudo yum install -y "${missing[@]}"
         else
-            log_err "无法自动安装依赖，请手动安装: ${missing[*]}"
+            log_err "无法自动安装依赖: ${missing[*]}"
             exit 1
         fi
     fi
 
-    if [ ! -f /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.0.so.37 ] && \
-       [ ! -f /usr/lib64/libwebkit2gtk-4.0.so.37 ] && \
-       [ ! -f /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so.0 ] && \
-       [ "${SKIP_APT_DEPS:-0}" != "1" ]; then
-        log_warn "libwebkit2gtk 可能缺失，AppImage 需要此库才能运行 CLI"
-        if command -v apt-get &>/dev/null; then
-            log_info "尝试安装 libwebkit2gtk ..."
+    # Check xvfb (required for headless CLI)
+    if ! command -v xvfb-run &>/dev/null; then
+        log_warn "xvfb 未安装 (无图形服务器 headless 切片必需)"
+        if [ "${SKIP_APT_DEPS:-0}" != "1" ] && command -v apt-get &>/dev/null; then
+            sudo apt-get install -y -qq xvfb
+        elif [ "${SKIP_APT_DEPS:-0}" != "1" ] && command -v dnf &>/dev/null; then
+            sudo dnf install -y xorg-x11-server-Xvfb
+        fi
+    fi
+
+    # Check and install shared libraries commonly missing for AppImage
+    if command -v apt-get &>/dev/null && [ "${SKIP_APT_DEPS:-0}" != "1" ]; then
+        local libs=()
+
+        for lib_pair in \
+            "libwebkit2gtk-4.0-dev|libwebkit2gtk" \
+            "libwebkit2gtk-4.1-dev|libwebkit2gtk" \
+            "libavcodec61|libavcodec" \
+            "libavformat61|libavformat" \
+            "libswscale8|libswscale" \
+            "libfuse2|fuse" \
+        ; do
+            local pkg="${lib_pair%%|*}"
+            local label="${lib_pair##*|}"
+            if dpkg -s "$pkg" &>/dev/null 2>&1; then
+                continue
+            fi
+            if apt-cache show "$pkg" &>/dev/null 2>&1; then
+                libs+=("$pkg")
+            else
+                log_warn "$label 未安装，且 $pkg 不在当前发行版仓库中 (AppImage 自带依赖可能无法工作)"
+            fi
+        done
+
+        if [ ${#libs[@]} -gt 0 ]; then
+            log_info "安装缺失的共享库: ${libs[*]}"
             sudo apt-get update -qq
-            sudo apt-get install -y -qq libwebkit2gtk-4.0-dev 2>/dev/null || \
-            sudo apt-get install -y -qq libwebkit2gtk-4.1-dev 2>/dev/null || \
-            log_warn "无法通过 apt 安装 libwebkit2gtk，切片时可能会报错"
+            sudo apt-get install -y -qq "${libs[@]}" 2>/dev/null || log_warn "部分库安装失败，请手动检查"
         fi
     fi
 
@@ -184,29 +232,38 @@ fetch_version() {
 # Download AppImage
 # ---------------------------------------------------------------------------
 download_appimage() {
-    local base_url="https://github.com/bambulab/BambuStudio/releases/download"
-    local url_candidates=()
+    local raw_base="https://github.com/bambulab/BambuStudio/releases/download"
 
-    url_candidates+=("${base_url}/v${VERSION}/Bambu_Studio_linux_${DISTRO}-v${VERSION}.AppImage")
-    url_candidates+=("${base_url}/V${VERSION}/Bambu_Studio_linux_${DISTRO}-V${VERSION}.AppImage")
+    local url_paths=()
+    url_paths+=("/v${VERSION}/Bambu_Studio_linux_${DISTRO}-v${VERSION}.AppImage")
+    url_paths+=("/V${VERSION}/Bambu_Studio_linux_${DISTRO}-V${VERSION}.AppImage")
 
     if [ "$DISTRO" = "fedora" ]; then
-        url_candidates+=("${base_url}/v${VERSION}/Bambu_Studio_linux_ubuntu-v${VERSION}.AppImage")
+        url_paths+=("/v${VERSION}/Bambu_Studio_linux_ubuntu-v${VERSION}.AppImage")
     elif [ "$DISTRO" = "ubuntu" ]; then
-        url_candidates+=("${base_url}/v${VERSION}/Bambu_Studio_linux_fedora-v${VERSION}.AppImage")
+        url_paths+=("/v${VERSION}/Bambu_Studio_linux_fedora-v${VERSION}.AppImage")
     fi
 
     APPIMAGE_NAME="Bambu_Studio_linux_${DISTRO}-v${VERSION}.AppImage"
 
-    for url in "${url_candidates[@]}"; do
+    local all_urls=()
+    for path in "${url_paths[@]}"; do
+        local expanded
+        expanded="$(build_download_urls "${raw_base}${path}")"
+        while IFS= read -r u; do
+            [ -n "$u" ] && all_urls+=("$u")
+        done <<< "$expanded"
+    done
+
+    for url in "${all_urls[@]}"; do
         log_info "尝试下载: $url"
         local http_code
-        http_code=$(curl -sL -o /dev/null -w '%{http_code}' "$url" 2>/dev/null || true)
+        http_code=$(curl -sL -o /dev/null -w '%{http_code}' --connect-timeout 8 "$url" 2>/dev/null || true)
         if [ "$http_code" = "200" ] || [ "$http_code" = "302" ]; then
             DOWNLOAD_URL="$url"
             break
         fi
-        log_warn "HTTP $http_code — 尝试下一个候选地址"
+        log_warn "HTTP $http_code — 尝试下一个"
     done
 
     if [ -z "$DOWNLOAD_URL" ]; then
@@ -299,11 +356,8 @@ install_from_appimage() {
 
     sudo tee "$wrapper" > /dev/null << 'WRAPPER_EOF'
 #!/usr/bin/env bash
-# Bambu Studio CLI wrapper for headless slicing
-# Suppresses GUI dependencies for command-line use
-
-unset DISPLAY
-unset WAYLAND_DISPLAY
+# Bambu Studio CLI wrapper for headless slicing on servers without X11
+# Auto-detects xvfb-run and uses it when DISPLAY is not set.
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 EXE="$HERE/bambu-studio"
@@ -316,7 +370,11 @@ if [ ! -f "$EXE" ]; then
     exit 1
 fi
 
-exec "$EXE" "$@"
+if [ -z "${DISPLAY:-}" ] && command -v xvfb-run &>/dev/null; then
+    exec xvfb-run -a "$EXE" "$@"
+else
+    exec "$EXE" "$@"
+fi
 WRAPPER_EOF
 
     sudo chmod +x "$wrapper"
@@ -375,7 +433,6 @@ verify_installation() {
     fi
 
     log_info "运行: $exe --help"
-
     local help_output
     help_output=$("$exe" --help 2>&1) || true
 

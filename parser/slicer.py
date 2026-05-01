@@ -13,6 +13,13 @@ BAMBU_PROFILE_DIR = os.getenv("BAMBU_PROFILE_DIR", "").strip() or os.path.join(
 )
 BAMBU_TIMEOUT_SECONDS = float(os.getenv("BAMBU_TIMEOUT_SECONDS", "300") or "300")
 
+_xvfb_run_path = shutil.which("xvfb-run")
+
+def _xvfb_wrap_cmd(cmd: list[str]) -> list[str]:
+    if _xvfb_run_path and not os.environ.get("DISPLAY"):
+        return [_xvfb_run_path, "-a"] + cmd
+    return cmd
+
 
 def _env_csv(name: str) -> list[str]:
     raw = os.getenv(name, "")
@@ -353,11 +360,9 @@ def run_bambu_slice(
     cmd.append(output_3mf_path)
     cmd.append(model_path)
 
-    timeout_s = BAMBU_TIMEOUT_SECONDS
+    cmd = _xvfb_wrap_cmd(cmd)
 
-    import shlex
-    env = dict(os.environ)
-    env.pop("DISPLAY", None)
+    timeout_s = BAMBU_TIMEOUT_SECONDS
 
     try:
         res = subprocess.run(
@@ -366,7 +371,6 @@ def run_bambu_slice(
             text=True,
             timeout=timeout_s,
             shell=False,
-            env=env,
         )
         if res.returncode != 0:
             err = (res.stderr or res.stdout or "").strip()
