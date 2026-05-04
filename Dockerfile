@@ -3,6 +3,16 @@ FROM ubuntu:24.04
 ARG BAMBU_VERSION=02.06.00.51
 ARG BAMBU_MIRROR=https://mirror.ghproxy.com/
 
+RUN apt-get update && apt-get install -y --no-install-recommends software-properties-common && \
+    add-apt-repository -y universe && \
+    apt-get update && apt-get install -y --no-install-recommends \
+    python3 python3-venv python3-pip \
+    curl ca-certificates \
+    xvfb libfuse2t64 \
+    libwebkit2gtk-4.1-0 libosmesa6 \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN set -e; \
     DOWNLOAD_OK=0; \
     for url in \
@@ -21,16 +31,6 @@ RUN set -e; \
         fi; \
     done; \
     [ "$DOWNLOAD_OK" = "1" ] || { echo "ERROR: all download mirrors failed"; exit 1; }
-
-RUN apt-get update && apt-get install -y --no-install-recommends software-properties-common && \
-    add-apt-repository -y universe && \
-    apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-venv python3-pip \
-    curl ca-certificates \
-    xvfb libfuse2t64 \
-    libwebkit2gtk-4.1-0 libosmesa6 \
-    ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
 
 RUN chmod +x /tmp/bambu.AppImage && \
     cd /tmp && /tmp/bambu.AppImage --appimage-extract && \
