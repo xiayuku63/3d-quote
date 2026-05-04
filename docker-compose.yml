@@ -1,0 +1,35 @@
+services:
+  app:
+    build: .
+    container_name: pricer3d-app
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5000:5000"
+    volumes:
+      - pricer3d_data:/app/data
+    env_file:
+      - .env
+    environment:
+      - BAMBU_EXECUTABLE=/usr/local/bin/bambu-studio
+      - BAMBU_PROFILE_DIR=/app/profiles/bambu
+      - UPLOADS_DIR=/app/data/uploads
+      - OUTPUTS_DIR=/app/data/outputs
+      - USER_DATA_DIR=/app/data/user
+      - DB_PATH=/app/data/app.db
+
+  nginx:
+    image: nginx:alpine
+    container_name: pricer3d-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx_docker.conf:/etc/nginx/conf.d/default.conf:ro
+      - certbot_www:/var/www/certbot:ro
+    depends_on:
+      - app
+
+volumes:
+  pricer3d_data:
+  certbot_www:

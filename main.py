@@ -109,7 +109,7 @@ MAX_FILES_PER_REQUEST = 20
 MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024
 UPLOADS_DIR = os.getenv("UPLOADS_DIR", "uploads").strip() or "uploads"
 OUTPUTS_DIR = os.getenv("OUTPUTS_DIR", "outputs").strip() or "outputs"
-DB_PATH = "app.db"
+DB_PATH = os.getenv("DB_PATH", "app.db").strip() or "app.db"
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_HOURS = 24
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
