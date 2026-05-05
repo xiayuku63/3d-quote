@@ -26,15 +26,17 @@ URLS=(
 echo "Attempting to download Bambu Studio v${VERSION} ..."
 
 for url in "${URLS[@]}"; do
+    TMP=$(mktemp /tmp/bambu_dl_XXXXXX)
     echo -e "  Trying: ${YELLOW}${url}${NC}"
-    if wget -q --timeout=30 --tries=1 -O bambu.AppImage "$url" 2>/dev/null; then
-        SIZE=$(stat -c%s bambu.AppImage 2>/dev/null || echo 0)
+    if wget -q --timeout=30 --tries=1 -O "$TMP" "$url" 2>/dev/null; then
+        SIZE=$(stat -c%s "$TMP" 2>/dev/null || echo 0)
         if [ "$SIZE" -gt 10000000 ]; then
+            mv "$TMP" bambu.AppImage
             echo -e "${GREEN}[OK] Downloaded ${SIZE} bytes${NC}"
             exit 0
         fi
-        rm -f bambu.AppImage
     fi
+    rm -f "$TMP"
     echo "  Failed, trying next..."
 done
 
