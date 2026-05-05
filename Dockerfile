@@ -11,7 +11,9 @@ RUN sed -i 's|http://archive.ubuntu.com|http://mirrors.aliyun.com|g; s|http://se
 
 COPY bambu.AppImage /tmp/
 
-RUN chmod +x /tmp/bambu.AppImage && \
+RUN file /tmp/bambu.AppImage | grep -q "ELF" || { echo "ERROR: bambu.AppImage is not a valid binary"; ls -la /tmp/bambu.AppImage; file /tmp/bambu.AppImage; exit 1; } && \
+    SIZE=$(stat -c%s /tmp/bambu.AppImage); echo "AppImage size: ${SIZE} bytes"; \
+    chmod +x /tmp/bambu.AppImage && \
     cd /tmp && /tmp/bambu.AppImage --appimage-extract && \
     mkdir -p /opt/bambu-studio && \
     cp -r /tmp/squashfs-root/* /opt/bambu-studio/ && \
