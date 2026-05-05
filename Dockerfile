@@ -3,8 +3,7 @@ FROM ubuntu:24.04
 ARG BAMBU_VERSION=02.06.00.51
 ARG BAMBU_MIRROR=https://mirror.ghproxy.com/
 
-RUN apt-get update && apt-get install -y --no-install-recommends software-properties-common && \
-    add-apt-repository -y universe && \
+RUN sed -i 's|http://archive.ubuntu.com|http://mirrors.aliyun.com|g; s|http://security.ubuntu.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list.d/ubuntu.sources && \
     apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-venv python3-pip \
     curl ca-certificates \
