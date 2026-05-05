@@ -11,8 +11,17 @@ RUN sed -i 's|http://archive.ubuntu.com|http://mirrors.aliyun.com|g; s|http://se
 
 COPY bambu.AppImage /tmp/
 
-RUN file /tmp/bambu.AppImage | grep -q "ELF" || { echo "ERROR: bambu.AppImage is not a valid binary"; ls -la /tmp/bambu.AppImage; file /tmp/bambu.AppImage; exit 1; } && \
-    SIZE=$(stat -c%s /tmp/bambu.AppImage); echo "AppImage size: ${SIZE} bytes"; \
+RUN SIZE=$(stat -c%s /tmp/bambu.AppImage 2>/dev/null || echo 0); \
+    if [ "$SIZE" -lt 10000000 ]; then \
+        echo "ERROR: bambu.AppImage too small or missing (${SIZE} bytes)"; \
+        echo "Please download it first:"; \
+        echo "  On your PC, visit: https://github.com/bambulab/BambuStudio/releases"; \
+        echo "  Download: Bambu_Studio_linux_ubuntu-v02.06.00.51.AppImage"; \
+        echo "  Rename to bambu.AppImage"; \
+        echo '  scp bambu.AppImage root@47.106.102.208:~/3d-quote/'; \
+        exit 1; \
+    fi; \
+    echo "AppImage size: ${SIZE} bytes"; \
     chmod +x /tmp/bambu.AppImage && \
     cd /tmp && /tmp/bambu.AppImage --appimage-extract && \
     mkdir -p /opt/bambu-studio && \
