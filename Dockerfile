@@ -35,7 +35,10 @@ RUN BIN=$(find /opt/bambu-studio -name "bambu-studio" -type f | head -1) && \
 WORKDIR /app
 COPY requirements.txt .
 RUN python3 -m venv /app/venv && \
-    /app/venv/bin/pip install --no-cache-dir -r requirements.txt
+    /app/venv/bin/pip install --no-cache-dir \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple \
+    --trusted-host pypi.tuna.tsinghua.edu.cn \
+    -r requirements.txt
 
 COPY . .
 
