@@ -1,0 +1,31 @@
+# Mihomo (Clash Meta) proxy config
+# Auto-generated for 3D Printing Quoting System server
+
+mixed-port: 7890
+allow-lan: false
+mode: rule
+log-level: info
+external-controller: 127.0.0.1:9090
+
+proxy-providers:
+  auto:
+    type: http
+    url: "https://www.c7sugkhg556.org/kgcclmdl/TuvySbKp3PCFL4jci0CduCTmH36hHpg9xvWaueRZ1tG7ZoyaREJ2OocbPIlnQxQd?b2m4=1"
+    interval: 3600
+    path: ./proxies.yaml
+    health-check:
+      enable: true
+      url: https://www.gstatic.com/generate_204
+      interval: 300
+
+proxy-groups:
+  - name: PROXY
+    type: url-test
+    use:
+      - auto
+    url: https://www.gstatic.com/generate_204
+    interval: 300
+    tolerance: 150
+
+rules:
+  - MATCH,PROXY

@@ -18,17 +18,23 @@ if [ -f bambu.AppImage ]; then
 fi
 
 URLS=(
-    "https://ghproxy.net/https://github.com/bambulab/BambuStudio/releases/download/v${VERSION}/${APPIMAGE_NAME}"
-    "https://gh.api.99988866.xyz/https://github.com/bambulab/BambuStudio/releases/download/v${VERSION}/${APPIMAGE_NAME}"
     "https://github.com/bambulab/BambuStudio/releases/download/v${VERSION}/${APPIMAGE_NAME}"
 )
 
 echo "Attempting to download Bambu Studio v${VERSION} ..."
 
+# Use local proxy if available (mihomo/clash on 7890)
+WGET_OPTS="-q --timeout=60 --tries=2"
+if nc -z 127.0.0.1 7890 2>/dev/null; then
+    echo "  Proxy detected on :7890, routing through it..."
+    export https_proxy=http://127.0.0.1:7890
+    WGET_OPTS="$WGET_OPTS"
+fi
+
 for url in "${URLS[@]}"; do
     TMP=$(mktemp /tmp/bambu_dl_XXXXXX)
     echo -e "  Trying: ${YELLOW}${url}${NC}"
-    if wget -q --timeout=30 --tries=1 -O "$TMP" "$url" 2>/dev/null; then
+    if wget $WGET_OPTS -O "$TMP" "$url" 2>/dev/null; then
         SIZE=$(stat -c%s "$TMP" 2>/dev/null || echo 0)
         if [ "$SIZE" -gt 10000000 ]; then
             mv "$TMP" bambu.AppImage
