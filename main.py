@@ -1577,6 +1577,7 @@ from calculator.cost import (
     FORMULA_ALIAS_TO_CANONICAL
 )
 
+@app.on_event("startup")
 def on_startup():
     init_db()
     _uploads_base_dir()
