@@ -252,6 +252,7 @@ def run_prusa_slice(
         os.makedirs(out_dir, exist_ok=True)
     
     # Build settings list (CLI args have higher priority than --load)
+    # Based on Bambu Lab A1 0.4mm nozzle factory profile
     settings_list = [
         # ── Print settings ──
         "--fill-density", f"{infill_percent}%",
@@ -264,44 +265,44 @@ def run_prusa_slice(
         # ── Layer height ──
         "--layer-height", str(layer_height),
         "--first-layer-height", str(min(layer_height * 1.75, 0.35)),
-        # ── Speed (Bambu Lab A1 equivalents) ──
-        "--perimeter-speed", "200",
-        "--external-perimeter-speed", "150",
-        "--infill-speed", "300",
-        "--solid-infill-speed", "250",
-        "--top-solid-infill-speed", "200",
+        # ── Speed (Bambu A1) ──
+        "--perimeter-speed", "250",
+        "--external-perimeter-speed", "200",
+        "--infill-speed", "400",
+        "--solid-infill-speed", "300",
+        "--top-solid-infill-speed", "250",
         "--gap-fill-speed", "50",
-        "--bridge-speed", "60",
-        "--travel-speed", "500",
-        "--first-layer-speed", "50",
-        # ── Acceleration (Bambu A1: X/Y 12,000 mm/s²) ──
-        "--default-acceleration", "10000",
-        "--perimeter-acceleration", "8000",
-        "--infill-acceleration", "12000",
-        "--external-perimeter-acceleration", "5000",
-        "--bridge-acceleration", "3000",
-        "--first-layer-acceleration", "2000",
-        "--travel-acceleration", "12000",
-        # ── Machine max limits (Bambu A1 from factory profile) ──
-        "--machine-max-acceleration-x", "12000",
-        "--machine-max-acceleration-y", "12000",
+        "--bridge-speed", "80",
+        "--travel-speed", "600",
+        "--first-layer-speed", "80",
+        # ── Acceleration (A1: X/Y 12-20K) ──
+        "--default-acceleration", "15000",
+        "--perimeter-acceleration", "12000",
+        "--infill-acceleration", "20000",
+        "--external-perimeter-acceleration", "8000",
+        "--bridge-acceleration", "5000",
+        "--first-layer-acceleration", "3000",
+        "--travel-acceleration", "15000",
+        # ── Machine max limits (A1 factory) ──
+        "--machine-max-acceleration-x", "20000",
+        "--machine-max-acceleration-y", "20000",
         "--machine-max-acceleration-z", "1500",
         "--machine-max-acceleration-e", "5000",
-        "--machine-max-acceleration-extruding", "12000",
-        "--machine-max-acceleration-travel", "9000",
+        "--machine-max-acceleration-extruding", "20000",
+        "--machine-max-acceleration-travel", "20000",
         "--machine-max-feedrate-x", "500",
         "--machine-max-feedrate-y", "500",
         "--machine-max-feedrate-z", "30",
         "--machine-max-feedrate-e", "30",
-        # ── Retraction (Bambu A1 Direct Drive) ──
-        "--retract-length", "0.8",
-        "--retract-speed", "30",
-        "--deretract-speed", "30",
-        "--retract-before-travel", "1",
+        # ── Retraction (Direct Drive) ──
+        "--retract-length", "0.6",
+        "--retract-speed", "40",
+        "--deretract-speed", "40",
+        "--retract-before-travel", "1.5",
         "--retract-lift", "0.4",
-        # ── No volumetric limit for Bambu hotend (92mm³ melt volume) ──
+        # ── No volumetric limit ──
         "--max-volumetric-speed", "0",
-        # ── Cooling ──
+        # ── Cooling (minimal slowdown) ──
         "--cooling",
         "--fan-always-on",
         "--max-fan-speed", "100",
@@ -309,6 +310,10 @@ def run_prusa_slice(
         "--bridge-fan-speed", "100",
         "--disable-fan-first-layers", "1",
         "--full-fan-speed-layer", "5",
+        # ── Minimize cooling time penalty ──
+        "--fan-below-layer-time", "0",
+        "--slowdown-below-layer-time", "0",
+        "--min-print-speed", "25",
     ]
     
     # Use preset if available
