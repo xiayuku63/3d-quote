@@ -623,7 +623,7 @@ DEFAULT_PRICING_CONFIG = {
     "difficulty_ratio_low": 0.8,
     "difficulty_ratio_high": 4.0,
     "use_bambu": 0,
-    "use_prusaslicer": 0,
+    "use_prusaslicer": 1,
     "bambu_support_mode": "diff",
     "support_price_per_g": 0.0,
     "time_overhead_min": 5.0,
@@ -1160,8 +1160,8 @@ def list_slicer_presets(user_id: int) -> list[dict]:
 
 
 SYSTEM_SLICER_PRESET_ID = 0
-SYSTEM_SLICER_PRESET_FILENAME = os.path.join("profiles", "bambu", "process.json")
-SYSTEM_SLICER_PRESET_DISPLAY_NAME = "Bambu A1 0.20mm Standard (系统内置)"
+SYSTEM_SLICER_PRESET_FILENAME = os.path.join("profiles", "prusa", "print.ini")
+SYSTEM_SLICER_PRESET_DISPLAY_NAME = "PrusaSlicer 0.20mm Standard (系统内置)"
 
 
 def get_system_slicer_preset() -> dict:
