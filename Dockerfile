@@ -9,6 +9,10 @@ RUN sed -i 's|http://archive.ubuntu.com|http://mirrors.aliyun.com|g; s|http://se
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
+# PrusaSlicer for headless slicing (replaces Bambu Studio which requires Wayland)
+RUN apt-get update && apt-get install -y --no-install-recommends prusa-slicer \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY bambu.AppImage /tmp/
 
 RUN SIZE=$(stat -c%s /tmp/bambu.AppImage 2>/dev/null || echo 0); \
