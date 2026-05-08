@@ -12,6 +12,7 @@ from typing import List, Optional
 from fastapi import UploadFile, Request
 
 from parser.slicer import run_bambu_slice, bambu_support_diff_stats
+from parser.prusa_slicer import run_prusa_slice, prusa_support_diff_stats
 
 logger = logging.getLogger(__name__)
 
@@ -280,19 +281,80 @@ def calculate_cost(
     difficulty_multiplier = 1.0 + (difficulty_coefficient * difficulty_score)
     difficulty_markup_percent = max(0.0, (difficulty_multiplier - 1.0) * 100.0)
 
-    raw_use = cfg.get("use_bambu") or cfg.get("use_kirimoto") or cfg.get("use_curaengine") or cfg.get("use_prusaslicer")
+    # Determine which slicer to use
+    raw_prusa = cfg.get("use_prusaslicer")
+    use_prusaslicer = False
+    try:
+        use_prusaslicer = bool(int(raw_prusa))
+    except Exception:
+        use_prusaslicer = str(raw_prusa or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+
+    raw_bambu = cfg.get("use_bambu") or cfg.get("use_kirimoto") or cfg.get("use_curaengine")
     use_bambu = False
     try:
-        use_bambu = bool(int(raw_use))
+        use_bambu = bool(int(raw_bambu))
     except Exception:
-        use_bambu = str(raw_use or "").strip().lower() in {"1", "true", "yes", "y", "on"}
-    bambu_support_mode = str(cfg.get("bambu_support_mode") or cfg.get("kirimoto_support_mode") or cfg.get("curaengine_support_mode") or cfg.get("prusaslicer_support_mode") or "diff").strip().lower() or "diff"
+        use_bambu = str(raw_bambu or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+
+    bambu_support_mode = str(cfg.get("bambu_support_mode") or cfg.get("kirimoto_support_mode") or cfg.get("curaengine_support_mode") or "diff").strip().lower() or "diff"
 
     slicer_time_s = None
     slicer_filament_g_per_part = None
     preset_used = None
     bambu_error_msg = None
     support_weight_g_per_part = 0.0
+
+    # ---- PrusaSlicer (preferred: no display needed) ----
+    if use_prusaslicer and model_path and os.path.exists(model_path):
+        try:
+            logger.info(f"PrusaSlicer enabled, slicing: {model_path}")
+            base_name = os.path.splitext(os.path.basename(model_path))[0]
+            output_prefix = _sanitize_filename_component(base_name, fallback="model", max_len=60)
+            user_folder = f"user_{current_user['id']}_{current_user['username']}" if current_user else "anonymous"
+            outputs_job_dir = os.path.join(_user_base_dir(), user_folder, "outputs", _date_folder_utc(), output_prefix)
+            os.makedirs(outputs_job_dir, exist_ok=True)
+
+            output_gcode = os.path.join(outputs_job_dir, f"{output_prefix}.gcode")
+            if bambu_support_mode == "diff":
+                st = prusa_support_diff_stats(
+                    model_path,
+                    layer_height=layer_height_mm,
+                    infill_percent=infill_percent,
+                    perimeters=perimeters or 3,
+                    output_dir=outputs_job_dir,
+                    output_prefix=output_prefix,
+                )
+                support_weight_g_per_part = float(st.get("support_g") or 0.0)
+                if st.get("estimated_time_s") is not None:
+                    slicer_time_s = int(st["estimated_time_s"])
+                if st.get("filament_g") is not None and float(st["filament_g"]) > 0:
+                    slicer_filament_g_per_part = float(st["filament_g"])
+                elif st.get("filament_cm3") is not None and float(st["filament_cm3"]) > 0:
+                    # Calculate weight from volume if density wasn't set
+                    filament_cm3 = float(st["filament_cm3"])
+                    slicer_filament_g_per_part = filament_cm3 * spec["density"]
+            else:
+                stats = run_prusa_slice(
+                    model_path, output_gcode,
+                    layer_height=layer_height_mm,
+                    infill_percent=infill_percent,
+                    perimeters=perimeters or 3,
+                    material_density=spec["density"],
+                )
+                if stats.get("time_s", 0) > 0:
+                    slicer_time_s = stats["time_s"]
+                if stats.get("filament_g", 0) > 0:
+                    slicer_filament_g_per_part = stats["filament_g"]
+                elif stats.get("filament_cm3", 0) > 0:
+                    filament_cm3 = stats["filament_cm3"]
+                    slicer_filament_g_per_part = filament_cm3 * spec["density"]
+        except Exception as e:
+            logger.error(f"PrusaSlicer failed for {model_path}: {e}")
+            slicer_time_s = None
+            slicer_filament_g_per_part = None
+            bambu_error_msg = f"PrusaSlicer: {e}"
+
+    # ---- Bambu Studio (fallback, requires display/Wayland) ----
     if use_bambu and model_path and os.path.exists(model_path):
         preset_tmp_path = None
         try:

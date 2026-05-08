@@ -623,6 +623,7 @@ DEFAULT_PRICING_CONFIG = {
     "difficulty_ratio_low": 0.8,
     "difficulty_ratio_high": 4.0,
     "use_bambu": 0,
+    "use_prusaslicer": 0,
     "bambu_support_mode": "diff",
     "support_price_per_g": 0.0,
     "time_overhead_min": 5.0,
@@ -2688,6 +2689,7 @@ async def get_quote(
     quantity: int = Form(1, ge=1, le=5000),
     color: str = Form("White", min_length=1, max_length=40),
     use_bambu: Optional[bool] = Form(default=None),
+    use_prusaslicer: Optional[bool] = Form(default=None),
     current_user=Depends(get_current_user),
 ):
     try:
@@ -2717,6 +2719,8 @@ async def get_quote(
 
         if use_bambu is not None:
             pricing_config["use_bambu"] = use_bambu
+        if use_prusaslicer is not None:
+            pricing_config["use_prusaslicer"] = use_prusaslicer
 
         material_names = {str(m.get("name")) for m in user_materials if isinstance(m, dict)}
         if material not in material_names:
