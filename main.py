@@ -1179,7 +1179,7 @@ def get_system_slicer_preset() -> dict:
     return {
         "id": SYSTEM_SLICER_PRESET_ID,
         "name": SYSTEM_SLICER_PRESET_DISPLAY_NAME,
-        "ext": ".json",
+        "ext": ".ini",
         "content": bytes(content),
         "created_at": "内置",
         "is_default": True,

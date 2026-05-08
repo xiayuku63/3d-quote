@@ -251,94 +251,47 @@ def run_prusa_slice(
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
     
-    # Build settings list (CLI args have higher priority than --load)
-    # Based on Bambu Lab A1 0.4mm nozzle factory profile
-    settings_list = [
-        # ── Print settings ──
-        "--fill-density", f"{infill_percent}%",
-        "--perimeters", str(perimeters),
-        "--top-solid-layers", "5",
-        "--bottom-solid-layers", "5",
-        "--fill-pattern", "grid",
-        "--skirts", "1",
-        "--brim-width", "0",
-        # ── Printer (A1: 256x256x256) ──
-        "--bed-shape", "0x0,256x0,256x256,0x256",
-        "--max-print-height", "260",
-        # ── Layer height ──
-        "--layer-height", str(layer_height),
-        "--first-layer-height", str(min(layer_height * 1.75, 0.35)),
-        # ── Speed (Bambu A1 0.20mm Standard process profile) ──
-        "--perimeter-speed", "250",
-        "--external-perimeter-speed", "200",
-        "--infill-speed", "270",
-        "--solid-infill-speed", "250",
-        "--top-solid-infill-speed", "250",
-        "--gap-fill-speed", "250",
-        "--bridge-speed", "100",
-        "--travel-speed", "700",
-        "--first-layer-speed", "50",
-        # ── Acceleration (A1 process: 6000 default) ──
-        "--default-acceleration", "6000",
-        "--perimeter-acceleration", "6000",
-        "--infill-acceleration", "12000",
-        "--external-perimeter-acceleration", "5000",
-        "--bridge-acceleration", "5000",
-        "--first-layer-acceleration", "3000",
-        "--travel-acceleration", "12000",
-        # ── Machine max limits (A1 0.4mm nozzle specific) ──
-        "--machine-max-acceleration-x", "12000",
-        "--machine-max-acceleration-y", "12000",
-        "--machine-max-acceleration-z", "1500",
-        "--machine-max-acceleration-e", "5000",
-        "--machine-max-acceleration-extruding", "12000",
-        "--machine-max-acceleration-travel", "9000",
-        "--machine-max-feedrate-x", "500",
-        "--machine-max-feedrate-y", "500",
-        "--machine-max-feedrate-z", "30",
-        "--machine-max-feedrate-e", "30",
-        # ── Jerk (A1: X/Y=9, Z=3, E=3) ──
-        "--machine-max-jerk-x", "9",
-        "--machine-max-jerk-y", "9",
-        "--machine-max-jerk-z", "3",
-        "--machine-max-jerk-e", "3",
-        # ── Retraction (A1 Direct Drive) ──
-        "--retract-length", "0.8",
-        "--retract-speed", "30",
-        "--deretract-speed", "30",
-        "--retract-before-travel", "2",
-        "--retract-lift", "0.4",
-        # ── No volumetric limit (A1 hotend: 92mm³ melt volume) ──
-        "--max-volumetric-speed", "0",
-        # ── Cooling (A1 PLA) ──
-        "--cooling",
-        "--fan-always-on",
-        "--max-fan-speed", "100",
-        "--min-fan-speed", "35",
-        "--bridge-fan-speed", "100",
-        "--disable-fan-first-layers", "1",
-        "--full-fan-speed-layer", "5",
-        # ── Minimize cooling time penalty ──
-        "--fan-below-layer-time", "0",
-        "--slowdown-below-layer-time", "0",
-        "--min-print-speed", "25",
-    ]
-    
-    # Use preset if available
+    # ── Determine config source ──
+    # Priority: user preset > system default (profiles/prusa/print.ini)
     _used_preset = None
+    _config_content = None
+    
     if slicer_preset and isinstance(slicer_preset, dict) and slicer_preset.get("content"):
         raw_content = slicer_preset["content"]
         if isinstance(raw_content, str):
             raw_content = raw_content.encode("utf-8")
         first_non_ws = raw_content.lstrip()[:1]
         if first_non_ws not in (b"{", b"["):
-            config_path = os.path.join(os.path.dirname(output_gcode_path), "_preset.ini")
-            with open(config_path, "wb") as f:
-                f.write(raw_content)
+            _config_content = raw_content
             _used_preset = slicer_preset.get('name', 'unknown')
-            logger.info(f"Using slicer preset: {_used_preset}")
+            logger.info(f"Using user preset: {_used_preset}")
     
-    cmd = [exe] + settings_list + [
+    if _config_content is None:
+        # Load system default preset from profiles/prusa/print.ini
+        _sys_preset_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "profiles", "prusa", "print.ini")
+        if os.path.exists(_sys_preset_path):
+            with open(_sys_preset_path, "rb") as _f:
+                _config_content = _f.read()
+            _used_preset = "系统默认 (A1)"
+            logger.info(f"Using system default preset: {_sys_preset_path}")
+    
+    if _config_content is None:
+        raise RuntimeError("没有可用的 PrusaSlicer 配置 (找不到系统预设)")
+    
+    # Write config to temp file
+    config_path = os.path.join(os.path.dirname(output_gcode_path), "_prusacfg.ini")
+    with open(config_path, "wb") as f:
+        f.write(_config_content)
+    
+    # ── Quote overrides (CLI args override INI for quoting params) ──
+    settings_list = [
+        "--fill-density", f"{infill_percent}%",
+        "--perimeters", str(perimeters),
+        "--layer-height", str(layer_height),
+        "--first-layer-height", str(min(layer_height * 1.75, 0.35)),
+    ]
+    
+    cmd = [exe, "--load", config_path] + settings_list + [
         "--export-gcode",
         "--output", output_gcode_path,
         model_path,
