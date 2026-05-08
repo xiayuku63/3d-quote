@@ -2087,10 +2087,10 @@ def api_download_slicer_preset(preset_id: int, token: str):
         raise HTTPException(status_code=401, detail="用户不存在")
         
     if preset_id == 0:
-        template_path = os.path.join(os.path.dirname(__file__), "profiles", "bambu", "process.json")
+        template_path = os.path.join(os.path.dirname(__file__), "profiles", "prusa", "print.ini")
         if not os.path.exists(template_path):
             raise HTTPException(status_code=404, detail="系统预设文件丢失")
-        return FileResponse(template_path, filename="Bambu_A1_0.20mm_Standard.json")
+        return FileResponse(template_path, filename="PrusaSlicer_A1_0.20mm_Standard.ini")
         
     preset = get_slicer_preset_by_id(int(current_user["id"]), int(preset_id))
     if not preset:
