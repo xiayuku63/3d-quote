@@ -267,35 +267,113 @@ def run_prusa_slice(
             logger.info(f"Using user preset: {_used_preset}")
     
     if _config_content is None:
-        # Load system default preset from profiles/prusa/print.ini
-        _sys_preset_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "profiles", "prusa", "print.ini")
-        if os.path.exists(_sys_preset_path):
-            with open(_sys_preset_path, "rb") as _f:
+        import os as _os2
+        _sys_path = _os2.path.join(_os2.path.dirname(_os2.path.dirname(__file__)), "profiles", "prusa", "print.ini")
+        if _os2.path.exists(_sys_path):
+            with open(_sys_path, "rb") as _f:
                 _config_content = _f.read()
             _used_preset = "系统默认 (A1)"
-            logger.info(f"Using system default preset: {_sys_preset_path}")
+            logger.info(f"Using system default preset: {_sys_path}")
     
     if _config_content is None:
         raise RuntimeError("没有可用的 PrusaSlicer 配置 (找不到系统预设)")
     
-    # Write config to temp file
-    config_path = os.path.join(os.path.dirname(output_gcode_path), "_prusacfg.ini")
-    with open(config_path, "wb") as f:
-        f.write(_config_content)
+    # Parse INI content to extract key=value pairs for CLI args
+    _ini_lines = _config_content.decode("utf-8").split("\n")
+    _ini_settings = {}
+    for _line in _ini_lines:
+        _line = _line.strip()
+        if not _line or _line.startswith(";") or _line.startswith("#"):
+            continue
+        if "=" in _line:
+            _k, _v = _line.split("=", 1)
+            _ini_settings[_k.strip()] = _v.strip()
     
-    # ── Quote overrides (CLI args override INI for quoting params) ──
+    # Map INI keys to CLI flags, add defaults for missing keys
+    _INI_TO_CLI = {
+        "perimeter_speed": "--perimeter-speed",
+        "external_perimeter_speed": "--external-perimeter-speed",
+        "infill_speed": "--infill-speed",
+        "solid_infill_speed": "--solid-infill-speed",
+        "top_solid_infill_speed": "--top-solid-infill-speed",
+        "gap_fill_speed": "--gap-fill-speed",
+        "bridge_speed": "--bridge-speed",
+        "travel_speed": "--travel-speed",
+        "first_layer_speed": "--first-layer-speed",
+        "default_acceleration": "--default-acceleration",
+        "perimeter_acceleration": "--perimeter-acceleration",
+        "infill_acceleration": "--infill-acceleration",
+        "external_perimeter_acceleration": "--external-perimeter-acceleration",
+        "bridge_acceleration": "--bridge-acceleration",
+        "first_layer_acceleration": "--first-layer-acceleration",
+        "travel_acceleration": "--travel-acceleration",
+        "machine_max_acceleration_x": "--machine-max-acceleration-x",
+        "machine_max_acceleration_y": "--machine-max-acceleration-y",
+        "machine_max_acceleration_z": "--machine-max-acceleration-z",
+        "machine_max_acceleration_e": "--machine-max-acceleration-e",
+        "machine_max_acceleration_extruding": "--machine-max-acceleration-extruding",
+        "machine_max_acceleration_travel": "--machine-max-acceleration-travel",
+        "machine_max_feedrate_x": "--machine-max-feedrate-x",
+        "machine_max_feedrate_y": "--machine-max-feedrate-y",
+        "machine_max_feedrate_z": "--machine-max-feedrate-z",
+        "machine_max_feedrate_e": "--machine-max-feedrate-e",
+        "machine_max_jerk_x": "--machine-max-jerk-x",
+        "machine_max_jerk_y": "--machine-max-jerk-y",
+        "machine_max_jerk_z": "--machine-max-jerk-z",
+        "machine_max_jerk_e": "--machine-max-jerk-e",
+        "retract_length": "--retract-length",
+        "retract_speed": "--retract-speed",
+        "deretract_speed": "--deretract-speed",
+        "retract_before_travel": "--retract-before-travel",
+        "retract_lift": "--retract-lift",
+        "max_volumetric_speed": "--max-volumetric-speed",
+        "max_fan_speed": "--max-fan-speed",
+        "min_fan_speed": "--min-fan-speed",
+        "bridge_fan_speed": "--bridge-fan-speed",
+        "disable_fan_first_layers": "--disable-fan-first-layers",
+        "full_fan_speed_layer": "--full-fan-speed-layer",
+        "fan_below_layer_time": "--fan-below-layer-time",
+        "slowdown_below_layer_time": "--slowdown-below-layer-time",
+        "min_print_speed": "--min-print-speed",
+        "fill_pattern": "--fill-pattern",
+        "top_solid_layers": "--top-solid-layers",
+        "bottom_solid_layers": "--bottom-solid-layers",
+        "skirts": "--skirts",
+        "brim_width": "--brim-width",
+        "bed_shape": "--bed-shape",
+        "max_print_height": "--max-print-height",
+    }
+    
+    # Build CLI args from INI settings
     settings_list = [
+        # Quote params (always override from quoting request)
         "--fill-density", f"{infill_percent}%",
         "--perimeters", str(perimeters),
         "--layer-height", str(layer_height),
         "--first-layer-height", str(min(layer_height * 1.75, 0.35)),
     ]
     
-    cmd = [exe, "--load", config_path] + settings_list + [
+    # Add settings from INI preset
+    for ini_key, cli_flag in _INI_TO_CLI.items():
+        val = _ini_settings.get(ini_key)
+        if val is not None:
+            settings_list.extend([cli_flag, val])
+    
+    # Boolean flags (no value arg)
+    if _ini_settings.get("cooling", "1") == "1":
+        settings_list.append("--cooling")
+    if _ini_settings.get("fan_always_on", "1") == "1":
+        settings_list.append("--fan-always-on")
+    if _ini_settings.get("support_material", "0") == "1":
+        settings_list.append("--support-material")
+    
+    cmd = [exe] + settings_list + [
         "--export-gcode",
         "--output", output_gcode_path,
         model_path,
     ]
+    
+    logger.info(f"PrusaSlicer config: {_used_preset} ({len(_ini_settings)} settings)")
     
     logger.info(f"PrusaSlicer command: {' '.join(cmd)}")
     
@@ -332,17 +410,12 @@ def run_prusa_slice(
         raise RuntimeError(f"PrusaSlicer execution failed: {e}")
     finally:
         # Clean up temp preset file
-        if _used_preset:
-            try:
-                if os.path.exists(config_path):
-                    os.remove(config_path)
-            except Exception:
-                pass
+        try:
+            if os.path.exists(config_path):
+                os.remove(config_path)
+        except Exception:
+            pass
 
-
-# ---------------------------------------------------------------------------
-# Support material estimation (simple mode)
-# ---------------------------------------------------------------------------
 
 def prusa_support_diff_stats(
     model_path: str,
