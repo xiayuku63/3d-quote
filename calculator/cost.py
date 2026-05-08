@@ -343,7 +343,12 @@ def calculate_cost(
                     slicer_preset=slicer_preset,
                 )
                 if stats.get("time_s", 0) > 0:
-                    slicer_time_s = stats["time_s"]
+                    # Apply PrusaSlicer time correction factor
+                    correction = float(cfg.get("prusa_time_correction") or 1.0)
+                    if correction <= 0 or correction > 5:
+                        correction = 1.0
+                    slicer_time_s = max(1, int(stats["time_s"] * correction))
+                    logger.info(f"PrusaSlicer raw={stats['time_s']}s × corr={correction} = {slicer_time_s}s")
                 if stats.get("filament_g", 0) > 0:
                     slicer_filament_g_per_part = stats["filament_g"]
                 elif stats.get("filament_cm3", 0) > 0:
@@ -504,6 +509,7 @@ def calculate_cost(
         "bambu_preset_used": preset_used,
         "bambu_sets": _bambu_sets_from_quote_params(layer_height_mm, infill_percent, perimeters) if use_bambu else {},
         "bambu_estimated_time_s": int(slicer_time_s) if slicer_time_s is not None else None,
+        "bambu_time_correction": float(cfg.get("prusa_time_correction") or 1.0),
         "setup_fee_cny": round(setup_fee, 2),
         "min_job_fee_cny": round(min_job_fee, 2),
         "subtotal_cny": round(subtotal, 2),

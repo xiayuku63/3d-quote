@@ -624,6 +624,7 @@ DEFAULT_PRICING_CONFIG = {
     "difficulty_ratio_high": 4.0,
     "use_bambu": 0,
     "use_prusaslicer": 0,
+    "prusa_time_correction": 0.44,
     "bambu_support_mode": "diff",
     "support_price_per_g": 0.0,
     "time_overhead_min": 5.0,
