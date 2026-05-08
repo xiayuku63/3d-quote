@@ -155,38 +155,47 @@ perimeters = {perimeters}
 top_shell_layers = {top}
 bottom_shell_layers = {bottom}
 
-# Printer settings (generic FDM printer)
-bed_shape = 200x200
-bed_size = 200,200
-print_center = 100,100
+# Printer settings (Bambu Lab A1 0.4mm equivalent)
+bed_shape = 256x256
+bed_size = 256,256
+print_center = 128,128
 z_offset = 0
 nozzle_diameter = 0.4
+max_print_z = 256
 
-# Filament settings
+# Acceleration (Bambu A1: 12,000 mm/s²)
+default_acceleration = 10000
+perimeter_acceleration = 8000
+infill_acceleration = 12000
+bridge_acceleration = 3000
+first_layer_acceleration = 2000
+
+# Speed settings (Bambu A1 equivalents)
+outer_perimeter_speed = 200
+inner_perimeter_speed = 300
+small_perimeter_speed = 150
+solid_infill_speed = 250
+top_solid_infill_speed = 200
+support_material_speed = 200
+travel_speed = 500
+first_layer_speed = 50
+max_volumetric_speed = 12
+
+# Filament settings (Bambu PLA Basic)
 filament_diameter = 1.75
 filament_density = {density}
-extrusion_multiplier = 1
-temperature = 210
-first_layer_temperature = 215
-bed_temperature = 60
-first_layer_bed_temperature = 65
-
-# Speed settings
-outer_perimeter_speed = 50
-inner_perimeter_speed = 60
-small_perimeter_speed = 30
-solid_infill_speed = 80
-top_solid_infill_speed = 40
-support_material_speed = 60
-travel_speed = 130
-first_layer_speed = 20
+extrusion_multiplier = 0.98
+temperature = 220
+first_layer_temperature = 220
+bed_temperature = 55
+first_layer_bed_temperature = 55
 
 # Cooling
 enable_fan = 1
 fan_always_on = 1
-fan_below_layer_time = 60
-slowdown_below_layer_time = 5
-min_print_speed = 10
+fan_below_layer_time = 30
+slowdown_below_layer_time = 10
+min_print_speed = 25
 
 # Quality
 resolution = 0.0125
@@ -242,35 +251,54 @@ def run_prusa_slice(
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
     
-    # Generate or use preset config
+    # Build settings list (CLI args have higher priority than --load)
+    settings_list = [
+        "--fill-density", f"{infill_percent}%",
+        "--perimeters", str(perimeters),
+        "--top-solid-layers", "5",
+        "--bottom-solid-layers", "5",
+        # Bambu Lab A1 equivalent speeds
+        "--perimeter-speed", "200",
+        "--external-perimeter-speed", "150",
+        "--infill-speed", "300",
+        "--solid-infill-speed", "250",
+        "--top-solid-infill-speed", "200",
+        "--travel-speed", "500",
+        "--first-layer-speed", "50",
+        # Acceleration (Bambu A1: 12,000 mm/s²)
+        "--default-acceleration", "10000",
+        "--perimeter-acceleration", "8000",
+        "--infill-acceleration", "12000",
+        "--external-perimeter-acceleration", "5000",
+        "--bridge-acceleration", "3000",
+        # Machine max acceleration (very important - defaults are only 1500!)
+        "--machine-max-acceleration-extruding", "12000",
+        "--machine-max-acceleration-x", "12000",
+        "--machine-max-acceleration-y", "12000",
+        "--machine-max-acceleration-travel", "20000",
+        # Remove volumetric limit for Bambu-type hotend
+        "--max-volumetric-speed", "0",
+        "--filament-max-volumetric-speed", "0",
+        # Layer height
+        "--layer-height", str(layer_height),
+        "--first-layer-height", str(min(layer_height * 1.5, 0.35)),
+    ]
+    
+    # Use preset if available
     _used_preset = None
     if slicer_preset and isinstance(slicer_preset, dict) and slicer_preset.get("content"):
         raw_content = slicer_preset["content"]
         if isinstance(raw_content, str):
             raw_content = raw_content.encode("utf-8")
-        # Detect format: JSON {} = Bambu preset (not compatible), INI = use directly
         first_non_ws = raw_content.lstrip()[:1]
-        if first_non_ws in (b"{", b"["):
-            logger.info(f"Skipping Bambu-format preset '{slicer_preset.get('name','?')}', using generated config")
-        else:
-            # INI format - use it
+        if first_non_ws not in (b"{", b"["):
             config_path = os.path.join(os.path.dirname(output_gcode_path), "_preset.ini")
             with open(config_path, "wb") as f:
                 f.write(raw_content)
             _used_preset = slicer_preset.get('name', 'unknown')
             logger.info(f"Using slicer preset: {_used_preset}")
-    if not _used_preset:
-        # Generate config from quoting parameters
-        config_path = generate_prusa_config(
-            layer_height=layer_height,
-            infill_percent=infill_percent,
-            perimeters=perimeters,
-            material_density=material_density,
-        )
     
-    cmd = [
-        exe,
-        "--load", config_path,
+    cmd = [exe] + settings_list + [
         "--export-gcode",
         "--output", output_gcode_path,
         model_path,
@@ -310,12 +338,13 @@ def run_prusa_slice(
     except Exception as e:
         raise RuntimeError(f"PrusaSlicer execution failed: {e}")
     finally:
-        # Clean up temp config
-        try:
-            if os.path.exists(config_path):
-                os.remove(config_path)
-        except Exception:
-            pass
+        # Clean up temp preset file
+        if _used_preset:
+            try:
+                if os.path.exists(config_path):
+                    os.remove(config_path)
+            except Exception:
+                pass
 
 
 # ---------------------------------------------------------------------------
