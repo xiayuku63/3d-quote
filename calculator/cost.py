@@ -326,7 +326,11 @@ def calculate_cost(
                 )
                 support_weight_g_per_part = float(st.get("support_g") or 0.0)
                 if st.get("estimated_time_s") is not None:
-                    slicer_time_s = int(st["estimated_time_s"])
+                    # Apply PrusaSlicer time correction factor
+                    _ps_corr = float(cfg.get("prusa_time_correction") or 1.0)
+                    if _ps_corr <= 0 or _ps_corr > 5:
+                        _ps_corr = 1.0
+                    slicer_time_s = max(1, int(st["estimated_time_s"] * _ps_corr))
                 if st.get("filament_g") is not None and float(st["filament_g"]) > 0:
                     slicer_filament_g_per_part = float(st["filament_g"])
                 elif st.get("filament_cm3") is not None and float(st["filament_cm3"]) > 0:
