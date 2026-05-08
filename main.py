@@ -1988,6 +1988,7 @@ class SlicerPresetGenerateRequest(BaseModel):
     nozzle_size: float = Field(0.4, description="喷嘴大小(mm)")
     infill: int = Field(20, description="默认填充(%)")
     wall_count: int = Field(3, description="默认墙层数")
+    layer_height: Optional[float] = Field(default=None, ge=0.05, le=1.0, description="层高(mm)")
 
 @app.post("/api/slicer/presets/generate")
 def api_generate_slicer_preset(payload: SlicerPresetGenerateRequest, request: Request, current_user=Depends(get_current_user)):
@@ -2005,37 +2006,19 @@ def api_generate_slicer_preset(payload: SlicerPresetGenerateRequest, request: Re
         raise HTTPException(status_code=400, detail="墙层数只允许推荐值 (如 2, 3, 4, 5, 6)")
 
     preset_name = payload.name.strip()
-    ext = ".json"
     
-    # 读取 profiles/bambu/process.json 作为基础模板
-    template_path = os.path.join(os.path.dirname(__file__), "profiles", "bambu", "process.json")
-    try:
-        with open(template_path, "r", encoding="utf-8") as f:
-            preset_data = json.load(f)
-    except Exception as e:
-        logger.error(f"读取切片预设模板失败: {e}")
-        raise HTTPException(status_code=500, detail="读取切片预设模板失败")
-        
-    # 确保 settings 节点存在
-    if "settings" not in preset_data:
-        preset_data["settings"] = {}
-    if "device" not in preset_data["settings"]:
-        preset_data["settings"]["device"] = {}
-    if "process" not in preset_data["settings"]:
-        preset_data["settings"]["process"] = {}
-
-    # 仅覆盖指定的参数，其他参数（包括层高）保持模板默认值
-    preset_data["settings"]["device"]["bedWidth"] = payload.bed_width
-    preset_data["settings"]["device"]["bedDepth"] = payload.bed_depth
-    preset_data["settings"]["device"]["bedHeight"] = payload.bed_height
-    preset_data["settings"]["device"]["nozzleSize"] = payload.nozzle_size
+    # 生成 PrusaSlicer 兼容的 INI 配置（默认切片引擎现已改为 PrusaSlicer）
+    from parser.prusa_slicer import generate_prusa_config
     
-    preset_data["settings"]["process"]["sliceFillSparse"] = payload.infill / 100.0
-    preset_data["settings"]["process"]["sliceShells"] = payload.wall_count
-    preset_data["settings"]["process"]["sliceTopShells"] = payload.wall_count
-    preset_data["settings"]["process"]["sliceBottomShells"] = payload.wall_count
-    
-    raw = json.dumps(preset_data, indent=2).encode("utf-8")
+    config_path = generate_prusa_config(
+        layer_height=payload.layer_height or 0.2,
+        infill_percent=payload.infill,
+        perimeters=payload.wall_count,
+    )
+    with open(config_path, "r") as f:
+        raw = f.read().encode("utf-8")
+    os.unlink(config_path)
+    ext = ".ini"
     
     user_folder = f"user_{current_user['id']}_{current_user['username']}"
     user_configs_dir = os.path.join(_user_base_dir(), user_folder, "configs")

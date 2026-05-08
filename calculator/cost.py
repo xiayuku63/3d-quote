@@ -340,6 +340,7 @@ def calculate_cost(
                     infill_percent=infill_percent,
                     perimeters=perimeters or 3,
                     material_density=spec["density"],
+                    slicer_preset=slicer_preset,
                 )
                 if stats.get("time_s", 0) > 0:
                     slicer_time_s = stats["time_s"]

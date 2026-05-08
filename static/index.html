@@ -415,7 +415,7 @@
                                 <div id="uc-tab-slicer" class="uc-tab-pane hidden space-y-6">
                                     <div>
                                         <div class="flex justify-between items-center mb-2">
-                                            <h5 class="text-sm font-medium text-gray-700">切片配置（.cfg/.json 预设）</h5>
+                                            <h5 class="text-sm font-medium text-gray-700">切片配置（预设.ini 文件）</h5>
                                             <div class="flex items-center gap-2">
                                                 <p id="slicer-presets-msg" class="text-xs hidden"></p>
                                                 <button id="slicer-presets-refresh-btn" type="button" class="text-xs text-indigo-600 hover:text-indigo-800">刷新</button>
@@ -427,13 +427,13 @@
                                         <input id="slicer-preset-name" type="text" maxlength="60" class="mt-1 w-full border border-gray-300 rounded-sm text-xs px-2 py-1" placeholder="例如：PLA-0.2mm-20%填充" />
                                     </div>
                                     <div>
-                                        <label class="block text-xs text-gray-600">选择 .cfg / .json 文件</label>
+                                        <label class="block text-xs text-gray-600">选择 .ini 配置文件</label>
                                         <input id="slicer-preset-file" type="file" accept=".cfg,.json,.ini" class="mt-1 w-full text-xs" />
                                     </div>
                                     <button id="slicer-preset-upload-btn" type="button" class="h-[30px] px-3 rounded-md bg-indigo-600 text-white text-xs hover:bg-indigo-700">上传</button>
                                 </div>
                                 <div class="mt-4 border-t border-gray-100 pt-3">
-                                    <h6 class="text-xs font-medium text-gray-700 mb-2">或者：通过参数生成预设 (基于通用打印机，如拓竹A1)</h6>
+                                    <h6 class="text-xs font-medium text-gray-700 mb-2">或者：通过参数生成预设 (PrusaSlicer 配置格式)</h6>
                                     <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                                         <div>
                                             <label class="block text-xs text-gray-600">预设名称 <span class="text-red-500">*</span></label>

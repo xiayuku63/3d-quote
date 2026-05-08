@@ -212,6 +212,7 @@ def run_prusa_slice(
     infill_percent: int = 20,
     perimeters: int = 3,
     material_density: float = 1.24,
+    slicer_preset: Optional[dict] = None,
 ) -> dict:
     """
     Run PrusaSlicer headless to slice an STL file.
@@ -241,13 +242,31 @@ def run_prusa_slice(
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
     
-    # Generate config
-    config_path = generate_prusa_config(
-        layer_height=layer_height,
-        infill_percent=infill_percent,
-        perimeters=perimeters,
-        material_density=material_density,
-    )
+    # Generate or use preset config
+    _used_preset = None
+    if slicer_preset and isinstance(slicer_preset, dict) and slicer_preset.get("content"):
+        raw_content = slicer_preset["content"]
+        if isinstance(raw_content, str):
+            raw_content = raw_content.encode("utf-8")
+        # Detect format: JSON {} = Bambu preset (not compatible), INI = use directly
+        first_non_ws = raw_content.lstrip()[:1]
+        if first_non_ws in (b"{", b"["):
+            logger.info(f"Skipping Bambu-format preset '{slicer_preset.get('name','?')}', using generated config")
+        else:
+            # INI format - use it
+            config_path = os.path.join(os.path.dirname(output_gcode_path), "_preset.ini")
+            with open(config_path, "wb") as f:
+                f.write(raw_content)
+            _used_preset = slicer_preset.get('name', 'unknown')
+            logger.info(f"Using slicer preset: {_used_preset}")
+    if not _used_preset:
+        # Generate config from quoting parameters
+        config_path = generate_prusa_config(
+            layer_height=layer_height,
+            infill_percent=infill_percent,
+            perimeters=perimeters,
+            material_density=material_density,
+        )
     
     cmd = [
         exe,
