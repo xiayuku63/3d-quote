@@ -1952,11 +1952,12 @@ def api_list_slicer_presets(current_user=Depends(get_current_user)):
         
         valid_items = []
         
-        # 添加系统内置预设 A1
+        # 添加系统内置预设 (PrusaSlicer)
+        sys_preset = get_system_slicer_preset()
         valid_items.append({
             "id": 0,
-            "name": "Bambu A1 0.20mm Standard (系统内置)",
-            "ext": ".json",
+            "name": sys_preset["name"],
+            "ext": sys_preset["ext"],
             "created_at": "内置",
             "is_default": True
         })
