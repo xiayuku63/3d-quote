@@ -1615,9 +1615,6 @@
 
             async function _handleRowEdit(event, signal) {
                 const target = event.target;
-                if (!target.classList.contains('row-edit')) return;
-            async function _handleRowEdit(event, signal) {
-                const target = event.target;
                 if (!authToken) {
                     errorMsg.textContent = '请先登录后再修改报价参数';
                     errorContainer.classList.remove('hidden');
