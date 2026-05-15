@@ -1256,13 +1256,9 @@
                         targetPane.classList.add('block');
                     }
                     if (userCenterSaveBtn) {
-                        userCenterSaveBtn.classList.toggle('hidden', tabId === 'security' || tabId === 'history');
+                        userCenterSaveBtn.classList.toggle('hidden', tabId === 'security');
                     }
-                    const ucFooterEl = document.getElementById('uc-footer');
-                    if (ucFooterEl) {
-                        ucFooterEl.classList.toggle('hidden', tabId === 'history');
-                    }
-                    if (tabId === 'security' || tabId === 'history') {
+                    if (tabId === 'security') {
                         userCenterMsg.classList.add('hidden');
                     }
                 });
@@ -2286,14 +2282,16 @@
                 });
             }
 
-            // ── Quote history (in user center tab) ──
-            const ucHistoryTbody = document.getElementById('uc-history-tbody');
-            const ucHistoryRefreshBtn = document.getElementById('uc-history-refresh-btn');
-            let historyLoaded = false;
+            // ── Quote history (standalone modal, same level as user center) ──
+            const historyTbody = document.getElementById('history-tbody');
+            const historyRefreshBtn = document.getElementById('history-refresh-btn');
+            const quoteHistoryModal = document.getElementById('quote-history-modal');
+            const quoteHistoryBackdrop = document.getElementById('quote-history-backdrop');
+            const historyCloseBtn = document.getElementById('history-close-btn');
+            const openQuoteHistoryBtn = document.getElementById('open-quote-history-btn');
 
             async function loadQuoteHistory() {
-                if (!authToken || !ucHistoryTbody) return;
-                historyLoaded = true;
+                if (!authToken || !historyTbody) return;
                 try {
                     const resp = await fetch('/api/quote/history?limit=50', {
                         headers: { 'Authorization': `Bearer ${authToken}` }
@@ -2301,43 +2299,48 @@
                     if (!resp.ok) return;
                     const data = await resp.json();
                     if (!data.items || data.items.length === 0) {
-                        ucHistoryTbody.innerHTML = '<tr><td class="px-2 py-4 text-gray-400 text-center" colspan="9">暂无历史记录</td></tr>';
+                        historyTbody.innerHTML = '<tr><td class="px-3 py-4 text-gray-400 text-center" colspan="9">暂无历史记录</td></tr>';
                         return;
                     }
-                    ucHistoryTbody.innerHTML = data.items.map(item => {
+                    historyTbody.innerHTML = data.items.map(item => {
                         const ts = item.created_at ? new Date(item.created_at + 'Z').toLocaleString('zh-CN') : '-';
                         const statusBadge = item.status === 'success'
                             ? '<span class="text-green-600 font-medium">✓ 成功</span>'
                             : `<span class="text-red-500 font-medium" title="${escapeHtml(item.error_msg || '')}">✗ 失败</span>`;
                         return `<tr class="border-t border-gray-100 hover:bg-gray-50">
-                            <td class="px-2 py-2 text-gray-500">${ts}</td>
-                            <td class="px-2 py-2 max-w-[120px] truncate" title="${escapeHtml(item.filename)}">${escapeHtml(item.filename)}</td>
-                            <td class="px-2 py-2">${escapeHtml(item.material)}</td>
-                            <td class="px-2 py-2">${item.quantity}</td>
-                            <td class="px-2 py-2">${item.volume_cm3}</td>
-                            <td class="px-2 py-2">${item.weight_g}</td>
-                            <td class="px-2 py-2">${formatTimeHMS(item.estimated_time_h)}</td>
-                            <td class="px-2 py-2 font-medium text-indigo-600">¥${item.cost_cny}</td>
-                            <td class="px-2 py-2">${statusBadge}</td>
+                            <td class="px-3 py-2 text-gray-500">${ts}</td>
+                            <td class="px-3 py-2 max-w-[120px] truncate" title="${escapeHtml(item.filename)}">${escapeHtml(item.filename)}</td>
+                            <td class="px-3 py-2">${escapeHtml(item.material)}</td>
+                            <td class="px-3 py-2">${item.quantity}</td>
+                            <td class="px-3 py-2">${item.volume_cm3}</td>
+                            <td class="px-3 py-2">${item.weight_g}</td>
+                            <td class="px-3 py-2">${formatTimeHMS(item.estimated_time_h)}</td>
+                            <td class="px-3 py-2 font-medium text-indigo-600">¥${item.cost_cny}</td>
+                            <td class="px-3 py-2">${statusBadge}</td>
                         </tr>`;
                     }).join('');
                 } catch (e) {
-                    ucHistoryTbody.innerHTML = '<tr><td class="px-2 py-4 text-gray-400 text-center" colspan="9">加载失败</td></tr>';
+                    historyTbody.innerHTML = '<tr><td class="px-3 py-4 text-gray-400 text-center" colspan="9">加载失败</td></tr>';
                 }
             }
 
-            if (ucHistoryRefreshBtn) {
-                ucHistoryRefreshBtn.addEventListener('click', loadQuoteHistory);
+            if (historyRefreshBtn) {
+                historyRefreshBtn.addEventListener('click', loadQuoteHistory);
             }
 
-            // Auto-load history when switching to history tab in user center
-            document.querySelectorAll('.uc-tab-btn[data-uc-tab="history"]').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    if (!historyLoaded && authToken) {
-                        loadQuoteHistory();
-                    }
+            // Open quote history modal
+            if (openQuoteHistoryBtn) {
+                openQuoteHistoryBtn.addEventListener('click', () => {
+                    document.getElementById('user-dropdown')?.classList.add('hidden');
+                    quoteHistoryModal?.classList.remove('hidden');
+                    loadQuoteHistory();
                 });
-            });
+            }
+
+            // Close quote history modal
+            const closeHistoryModal = () => quoteHistoryModal?.classList.add('hidden');
+            if (historyCloseBtn) historyCloseBtn.addEventListener('click', closeHistoryModal);
+            if (quoteHistoryBackdrop) quoteHistoryBackdrop.addEventListener('click', closeHistoryModal);
 
             // Auto-load history after login
             const origLogin = typeof doLogin === 'function' ? doLogin : null;
