@@ -508,9 +508,6 @@
                     setSlicerPresetsMsg('请先选择打印机型号', false);
                     return;
                 }
-                const bed_width_orig = Number(genBedWidth.value) || 256;
-                const bed_depth = Number(genBedDepth.value) || 256;
-                const bed_height = Number(genBedHeight.value) || 256;
                 const nozzle_size = Number(genNozzleSize.value) || 0.4;
             const infill = Number(genInfill.value) || 15;
             const wall_count = Number(genWallCount.value) || 3;
