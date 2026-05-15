@@ -393,7 +393,7 @@
                 for (const selId of ["cfg-printer-model", "cfg-printer-model-main"]) {
                     const sel = document.getElementById(selId);
                     if (!sel) continue;
-                    sel.innerHTML = "<option value=\"\">加载中...</option>";
+                    sel.innerHTML = "<option value=\"bambu_a1\">Bambu Lab A1</option>";
                 }
             }
             preloadPrinterSelectors();
@@ -406,13 +406,19 @@
                 for (const selId of ["cfg-printer-model", "cfg-printer-model-main"]) {
                     const sel = document.getElementById(selId);
                     if (!sel) continue;
+                    let hasSelection = false;
                     sel.innerHTML = "<option value=\"\">请选择打印机...</option>";
                     printers.forEach(p => {
                         const opt = document.createElement("option");
                         opt.value = p.id;
                         opt.textContent = p.name + " (\u2009"+p.bed_width+"x"+p.bed_depth+"x"+p.bed_height+" mm)";
+                        if (sel.value) hasSelection = true;
                         sel.appendChild(opt);
                     });
+                    // Default to bambu_a1 if nothing selected
+                    if (!hasSelection && printers.some(p => p.id === "bambu_a1")) {
+                        sel.value = "bambu_a1";
+                    }
                 }
             }
 
