@@ -389,6 +389,24 @@
                 });
             }
 
+            async function fetchPrinterModels() {
+                const resp = await authFetch("/api/slicer/printers");
+                if (!resp.ok) return;
+                const data = await resp.json();
+                const printers = data.items || [];
+                for (const selId of ["gen-printer-model", "gen-printer-model-2", "cfg-printer-model"]) {
+                    const sel = document.getElementById(selId);
+                    if (!sel) continue;
+                    sel.innerHTML = "<option value=\"\">请选择打印机...</option>";
+                    printers.forEach(p => {
+                        const opt = document.createElement("option");
+                        opt.value = p.id;
+                        opt.textContent = p.icon + " " + p.name + " (\u2009"+p.bed_width+"x"+p.bed_depth+"x"+p.bed_height+" mm)";
+                        sel.appendChild(opt);
+                    });
+                }
+            }
+
             async function fetchSlicerPresets() {
                 if (!authToken) return;
                 try {
@@ -442,6 +460,7 @@
                     if (slicerPresetFileInput) slicerPresetFileInput.value = "";
                     const preset = data && data.preset ? data.preset : null;
                     await fetchSlicerPresets();
+                fetchPrinterModels();
                     if (preset && preset.id) {
                         quoteOptions.slicer_preset_id = Number(preset.id);
                         saveSlicerPresetSelection();
@@ -499,6 +518,7 @@
                     if (genPresetName) genPresetName.value = "";
                     const preset = data && data.preset ? data.preset : null;
                     await fetchSlicerPresets();
+                fetchPrinterModels();
                     if (preset && preset.id) {
                         quoteOptions.slicer_preset_id = Number(preset.id);
                         saveSlicerPresetSelection();
@@ -534,6 +554,7 @@
                     }
                     setSlicerPresetsMsg('已删除', true);
                     await fetchSlicerPresets();
+                fetchPrinterModels();
                     if (selectedFilesMap.size > 0) {
                         await reQuoteAllSelectedFiles('切片预设已删除，重算报价');
                     }
@@ -2031,6 +2052,7 @@
 
                     showEditPresetMsg('保存成功', true);
                     await fetchSlicerPresets();
+                fetchPrinterModels();
                     // 如果此时有文件在报价，触发重算
                     if (selectedFilesMap.size > 0) {
                         await reQuoteAllSelectedFiles('切片预设已更新，重算报价');
@@ -2073,6 +2095,7 @@
                     showEditPresetMsg(`已另存为「${newName}」`, true);
                     editPresetSaveasName.value = '';
                     await fetchSlicerPresets();
+                fetchPrinterModels();
 
                     // 自动选中新保存的预设并加载其内容
                     const newPreset = (slicerPresets || []).find(p => p.name === newName);

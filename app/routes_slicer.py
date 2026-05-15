@@ -213,3 +213,9 @@ async def api_delete_slicer_preset(preset_id: int, request: Request, current_use
         detail={"preset_id": int(preset_id)},
     )
     return {"status": "ok"}
+
+
+async def api_list_printers():
+    """Return available printer models."""
+    from .printers import PRINTER_MODELS
+    return {"items": PRINTER_MODELS}
