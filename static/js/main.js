@@ -390,7 +390,7 @@
 
             // Pre-populate printer selectors before async load
             function preloadPrinterSelectors() {
-                for (const selId of ["cfg-printer-model", "cfg-printer-model-main", "opt-printer"]) {
+                for (const selId of ["cfg-printer-model", "cfg-printer-model-main"]) {
                     const sel = document.getElementById(selId);
                     if (!sel) continue;
                     sel.innerHTML = "<option value=\"\">加载中...</option>";
@@ -403,7 +403,7 @@
                 if (!resp.ok) return;
                 const data = await resp.json();
                 const printers = data.items || [];
-                for (const selId of ["cfg-printer-model", "cfg-printer-model-main", "opt-printer"]) {
+                for (const selId of ["cfg-printer-model", "cfg-printer-model-main"]) {
                     const sel = document.getElementById(selId);
                     if (!sel) continue;
                     sel.innerHTML = "<option value=\"\">请选择打印机...</option>";
@@ -730,7 +730,7 @@
             }
 
 function buildPrinterOptionsHtml(selectedId) {
-                const sel = document.getElementById() || document.getElementById("opt-printer");
+                const sel = document.getElementById() || document.getElementById();
                 if (!sel || sel.options.length <= 1) return '<option value="">选择打印机...</option>';
                 let html = '<option value="">选择打印机...</option>';
                 for (const opt of sel.options) {
@@ -752,7 +752,7 @@ function buildPrinterOptionsHtml(selectedId) {
             async function quoteSingleFileWithOptions(file, options) {
                 const formData = new FormData();
                 formData.append("files", file);
-                const optPrinter = document.getElementById() || document.getElementById("opt-printer") || document.getElementById();
+                const optPrinter = document.getElementById() || document.getElementById() || document.getElementById();
                 if (optPrinter && optPrinter.value) formData.append("printer_model", optPrinter.value);
                 formData.append("material", options.material);
                 formData.append("color", options.color);
@@ -1753,7 +1753,7 @@ function buildPrinterOptionsHtml(selectedId) {
             async function quoteSelectedFiles(selectedFiles) {
                 const formData = new FormData();
                 selectedFiles.forEach((file) => formData.append("files", file));
-                const pmOpt = document.getElementById() || document.getElementById("opt-printer");
+                const pmOpt = document.getElementById() || document.getElementById();
                 if (pmOpt && pmOpt.value) formData.append("printer_model", pmOpt.value);
                 formData.append("material", quoteOptions.material);
                 formData.append("color", quoteOptions.color);
