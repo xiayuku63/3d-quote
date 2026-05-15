@@ -484,7 +484,31 @@
                     setSlicerPresetsMsg('请输入预设名称', false);
                     return;
                 }
-                const bed_width = Number(genBedWidth.value) || 256;
+                // Name conflict check
+                const existingNames = Array.from(document.querySelectorAll("#slicer-presets-tbody tr td:nth-child(2)")).map(td => td.textContent.trim());
+                if (existingNames.includes(name)) {
+                    setSlicerPresetsMsg('名称「' + name + '」已存在，请修改后保存', false);
+                    return;
+                }
+                // Load printer model dimensions
+                const pmSelect = document.getElementById("gen-printer-model-2");
+                let bed_width = 256, bed_depth = 256, bed_height = 256;
+                if (pmSelect && pmSelect.value) {
+                    const opt = pmSelect.selectedOptions[0];
+                    const m = opt.textContent.match(/\((\d+)x(\d+)x(\d+)/);
+                    if (m) {
+                        bed_width = Number(m[1]);
+                        bed_depth = Number(m[2]);
+                        bed_height = Number(m[3]);
+                    } else {
+                        setSlicerPresetsMsg('请先选择打印机型号', false);
+                        return;
+                    }
+                } else {
+                    setSlicerPresetsMsg('请先选择打印机型号', false);
+                    return;
+                }
+                const bed_width_orig = Number(genBedWidth.value) || 256;
                 const bed_depth = Number(genBedDepth.value) || 256;
                 const bed_height = Number(genBedHeight.value) || 256;
                 const nozzle_size = Number(genNozzleSize.value) || 0.4;
@@ -493,8 +517,8 @@
 
             const payload = {
                 name,
-                bed_width,
-                bed_depth,
+                bed_width: bed_width,
+                bed_depth: bed_depth,
                 bed_height,
                 nozzle_size,
                 infill,
