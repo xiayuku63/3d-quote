@@ -258,7 +258,7 @@ def prusa_support_diff_stats(
     output_dir: Optional[str] = None,
     output_prefix: Optional[str] = None,
 ) -> dict:
-    """Slice with & without supports; return support material diff."""
+    """Slice with & without supports; return support material diff + time."""
     result: dict = {
         "support_g": 0.0,
         "estimated_time_s": None,
@@ -272,7 +272,8 @@ def prusa_support_diff_stats(
     out_dir = output_dir or tempfile.mkdtemp()
     prefix = output_prefix or "prusa_support"
 
-    def _slice_and_get_g(supports: bool) -> float:
+    def _slice_and_get_stats(supports: bool) -> tuple[float, int]:
+        """Slice once and return (filament_g, time_s)."""
         gcode = os.path.join(out_dir, f"{prefix}_{'with' if supports else 'no'}_support.gcode")
         stats = run_prusa_slice(model_path, gcode,
                                 layer_height=layer_height, infill_percent=infill_percent,
@@ -280,12 +281,17 @@ def prusa_support_diff_stats(
         g = float(stats.get("filament_g") or 0)
         if g <= 0 and float(stats.get("filament_cm3") or 0) > 0:
             g = float(stats["filament_cm3"]) * 1.24
-        return g
+        time_s = int(stats.get("time_s") or 0)
+        return g, time_s
 
     try:
-        result["no_support_filament_g"] = _slice_and_get_g(False)
-        result["filament_g"] = _slice_and_get_g(True)
-        result["support_g"] = round(max(0.0, float(result["filament_g"]) - float(result["no_support_filament_g"])), 3)
+        no_sup_g, no_sup_time = _slice_and_get_stats(False)
+        with_sup_g, with_sup_time = _slice_and_get_stats(True)
+        result["no_support_filament_g"] = no_sup_g
+        result["no_support_time_s"] = no_sup_time if no_sup_time > 0 else None
+        result["filament_g"] = with_sup_g
+        result["estimated_time_s"] = with_sup_time if with_sup_time > 0 else None
+        result["support_g"] = round(max(0.0, with_sup_g - no_sup_g), 3)
     except Exception as e:
         logger.error(f"PrusaSlicer support diff failed: {e}")
 

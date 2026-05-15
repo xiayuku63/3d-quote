@@ -4,6 +4,9 @@ __pycache__/
 .coverage
 htmlcov/
 app.db
+test_app.db
+*.db
+logs/
 uploads/
 outputs/
 user/
@@ -11,3 +14,6 @@ data/
 *.egg-info/
 dist/
 build/
+.env
+*.local
+*.local.*
