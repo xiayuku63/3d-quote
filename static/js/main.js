@@ -1668,9 +1668,18 @@
                 if (!files.length) return;
                 errorMsg.textContent = '';
                 errorContainer.classList.add('hidden');
-                normalizeResultsWithCurrentOptions();
-                renderResultsTable();
-                recalcSummaryFromCurrentResults();
+
+                // Don't pre-update results — they'll flash wrong numbers
+                // Just update the material/color in place without re-rendering
+                currentResults = currentResults.map((item) => {
+                    if (!item || !item.filename) return item;
+                    const next = { ...item };
+                    const materialNames = new Set(MATERIAL_OPTIONS.map((m) => m && m.name).filter(Boolean));
+                    next.material = materialNames.has(next.material) ? next.material : quoteOptions.material;
+                    const allowedColors = getColorsForMaterial(next.material);
+                    next.color = allowedColors.includes(next.color) ? next.color : (allowedColors[0] || quoteOptions.color);
+                    return next;
+                });
 
                 fileNameDisplay.classList.add('text-indigo-600', 'font-medium');
                 for (let i = 0; i < files.length; i += 1) {
