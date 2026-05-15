@@ -728,6 +728,35 @@
                     optionsSummary.textContent = `打印机：${pmName} | 材料 ${quoteOptions.material}，颜色 ${colorText}，数量 ${quoteOptions.quantity}`;
                 }
             }
+
+            function getDefaultPrinter() {
+                const main = document.getElementById("main-printer");
+                if (main && main.value) return main.value;
+                const opt = document.getElementById("opt-printer");
+                if (opt && opt.value) return opt.value;
+                return PRICING_CONFIG?.printer_model || "";
+            }
+            function getPrinterName(id) {
+                if (!id) return "";
+                const sel = document.getElementById("main-printer") || document.getElementById("opt-printer");
+                if (sel) {
+                    for (const opt of sel.options) {
+                        if (opt.value === id) return opt.text;
+                    }
+                }
+                return id;
+            }
+            function buildPrinterOptionsHtml(selectedId) {
+                const sel = document.getElementById("main-printer") || document.getElementById("opt-printer");
+                if (!sel || sel.options.length <= 1) return '<option value="">选择打印机...</option>';
+                let html = '<option value="">选择打印机...</option>';
+                for (const opt of sel.options) {
+                    if (!opt.value) continue;
+                    html += '<option value="' + opt.value + '"' + (opt.value === selectedId ? ' selected' : '') + '>' + opt.text + '</option>';
+                }
+                return html;
+            }
+
             function recalcSummaryFromCurrentResults() {
                 const successItems = currentResults.filter((i) => i.status === "success");
                 const failedItems = currentResults.filter((i) => i.status === "failed");
@@ -745,6 +774,7 @@
                 formData.append("material", options.material);
                 formData.append("color", options.color);
                 formData.append("quantity", String(options.quantity));
+                if (options.printer_model) formData.append("printer_model", options.printer_model);
                 if (quoteOptions.slicer_preset_id !== null && quoteOptions.slicer_preset_id !== undefined) {
                     formData.append("slicer_preset_id", String(quoteOptions.slicer_preset_id));
                 }
@@ -1648,7 +1678,9 @@
                 try {
                     await ensureThumbnailForFile(file, color);
                     if (signal.cancelled) return;
-                    const updated = await quoteSingleFileWithOptions(file, { material, color, quantity });
+                    const printerSelect = row.querySelector('[data-field="printer"]');
+                    const printerModel = printerSelect ? printerSelect.value : "";
+                    const updated = await quoteSingleFileWithOptions(file, { material, color, quantity, printer_model: printerModel });
                     if (signal.cancelled) return;
                     const idx = currentResults.findIndex((i) => i.filename === filename);
                     if (idx >= 0) currentResults[idx] = updated;
@@ -1842,6 +1874,7 @@
                                     <img src="${thumbnail}" alt="静态图" class="w-32 h-20 object-cover bg-white" />
                                 </button>
                             </td>
+                            <td class="px-2 py-1.5"><select data-field="printer" class="row-edit text-[11px] border border-gray-300 rounded px-1 py-0.5">${buildPrinterOptionsHtml(item.printer_model || getDefaultPrinter())}</select></td>
                             <td class="px-2 py-1.5"><select data-field="material" class="row-edit text-[11px] border border-gray-300 rounded px-1 py-0.5">${materialOptionsHtml}</select></td>
                             <td class="px-2 py-1.5"><select data-field="color" class="row-edit text-[11px] border border-gray-300 rounded px-1 py-0.5">${colorOptionsHtml}</select></td>
                             <td class="px-2 py-1.5"><input data-field="quantity" type="number" min="1" value="${item.quantity}" class="row-edit w-14 text-[11px] border border-gray-300 rounded px-1 py-0.5" /></td>
@@ -1865,6 +1898,7 @@
                         const materialOptionsHtml = MATERIAL_OPTIONS.map((m) => `<option value="${m.name}" ${m.name === selectedMaterial ? 'selected' : ''}>${m.name}</option>`).join('');
                         const renderedRowColors = renderColorOptionsForMaterial(selectedMaterial, selectedColor);
                         const colorOptionsHtml = renderedRowColors.html;
+                        const selectedPrinter = item.printer_model || getDefaultPrinter();
                         const quantityValue = item.quantity || quoteOptions.quantity || 1;
                         tr.innerHTML = `
                             <td class="px-2 py-1.5">${item.filename}</td>
