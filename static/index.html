@@ -280,6 +280,7 @@
                                 <button type="button" data-uc-tab="materials" class="uc-tab-btn w-full text-left px-3 py-2 rounded-md text-sm font-medium text-indigo-700 bg-indigo-50">材料设置</button>
                                 <button type="button" data-uc-tab="formulas" class="uc-tab-btn w-full text-left px-3 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">计算公式</button>
                                 <button type="button" data-uc-tab="costs" class="uc-tab-btn w-full text-left px-3 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">成本与时间</button>
+                                <button type="button" data-uc-tab="printer" class="uc-tab-btn w-full text-left px-3 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">🖨️ 机型配置</button>
                                 <button type="button" data-uc-tab="slicer" class="uc-tab-btn w-full text-left px-3 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">切片配置</button>
                                 <button type="button" data-uc-tab="security" class="uc-tab-btn w-full text-left px-3 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">账号安全</button>
                             </div>
@@ -426,6 +427,17 @@
                                         </div>
                                     </div>
                                 </div>
+                                <div id="uc-tab-printer" class="uc-tab-pane hidden space-y-4">
+                                    <h5 class="text-sm font-medium text-gray-700">打印机机型</h5>
+                                    <p class="text-xs text-gray-500">选择默认打印机，切片时将自动加载对应机型的 PrusaSlicer 配置。</p>
+                                    <div class="max-w-sm">
+                                        <label class="block text-xs text-gray-600">默认打印机型号</label>
+                                        <select id="cfg-printer-model-main" class="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md text-sm">
+                                            <option value="">选择打印机...</option>
+                                        </select>
+                                    </div>
+                                </div>
+
                                 <div id="uc-tab-slicer" class="uc-tab-pane hidden space-y-6">
                                     <div>
                                         <div class="flex justify-between items-center mb-2">
