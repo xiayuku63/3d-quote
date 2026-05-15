@@ -321,6 +321,16 @@ def calculate_cost(
                 if _tmp_3mf_stl:
                     actual_slice_path = _tmp_3mf_stl
                     logger.info(f"3MF converted to STL for slicing: {_tmp_3mf_stl}")
+
+            # Load printer profile for slicing
+            _printer_profile = None
+            printer_id = cfg.get("printer_model", "")
+            if printer_id:
+                from app.printers import PRINTER_MODELS
+                for pm in PRINTER_MODELS:
+                    if pm["id"] == printer_id:
+                        _printer_profile = os.path.join(os.path.dirname(os.path.dirname(__file__)), pm["profile"])
+                        break
             base_name = os.path.splitext(os.path.basename(model_path))[0]
             output_prefix = _sanitize_filename_component(base_name, fallback="model", max_len=60)
             user_folder = f"user_{current_user['id']}_{current_user['username']}" if current_user else "anonymous"
@@ -336,6 +346,7 @@ def calculate_cost(
                     perimeters=perimeters or 3,
                     output_dir=outputs_job_dir,
                     output_prefix=output_prefix,
+                    printer_profile_path=_printer_profile,
                 )
                 support_weight_g_per_part = float(st.get("support_g") or 0.0)
                 if st.get("estimated_time_s") is not None:
@@ -361,6 +372,7 @@ def calculate_cost(
                     perimeters=perimeters or 3,
                     material_density=spec["density"],
                     slicer_preset=slicer_preset,
+                    printer_profile_path=_printer_profile,
                 )
                 if stats.get("time_s", 0) > 0:
                     # Apply PrusaSlicer time correction factor

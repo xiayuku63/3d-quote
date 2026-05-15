@@ -394,7 +394,7 @@
                 if (!resp.ok) return;
                 const data = await resp.json();
                 const printers = data.items || [];
-                for (const selId of ["gen-printer-model", "gen-printer-model-2", "cfg-printer-model"]) {
+                for (const selId of ["gen-printer-model", "gen-printer-model-2", "cfg-printer-model", "cfg-printer-model-main", "opt-printer", "opt-printer-2"]) {
                     const sel = document.getElementById(selId);
                     if (!sel) continue;
                     sel.innerHTML = "<option value=\"\">请选择打印机...</option>";
@@ -729,6 +729,8 @@
             async function quoteSingleFileWithOptions(file, options) {
                 const formData = new FormData();
                 formData.append("files", file);
+                const optPrinter = document.getElementById("opt-printer") || document.getElementById("opt-printer-2");
+                if (optPrinter && optPrinter.value) formData.append("printer_model", optPrinter.value);
                 formData.append("material", options.material);
                 formData.append("color", options.color);
                 formData.append("quantity", String(options.quantity));
@@ -1683,6 +1685,8 @@
             async function quoteSelectedFiles(selectedFiles) {
                 const formData = new FormData();
                 selectedFiles.forEach((file) => formData.append("files", file));
+                const pmOpt = document.getElementById("opt-printer");
+                if (pmOpt && pmOpt.value) formData.append("printer_model", pmOpt.value);
                 formData.append("material", quoteOptions.material);
                 formData.append("color", quoteOptions.color);
                 formData.append("quantity", String(quoteOptions.quantity));

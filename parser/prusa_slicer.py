@@ -120,19 +120,24 @@ def generate_slice_config(
     perimeters: int = 3,
     material_density: float = 1.24,
     slicer_preset: Optional[dict] = None,
+    printer_profile_path: Optional[str] = None,
 ) -> str:
     """
     Generate a combined PrusaSlicer INI config file for a quote request.
 
-    Merges: system defaults → user preset overrides → quote parameters.
+    Merges: printer profile (or system default) → user preset → quote parameters.
     Returns path to temporary INI file.
     """
-    # Load system default settings
-    try:
-        ini_content = _load_system_ini()
-    except Exception:
-        # Fallback: generate minimal config
-        ini_content = ""
+    # Load base config: printer profile > system default
+    ini_content = ""
+    if printer_profile_path and os.path.exists(printer_profile_path):
+        with open(printer_profile_path, "r", encoding="utf-8") as f:
+            ini_content = f.read()
+    if not ini_content:
+        try:
+            ini_content = _load_system_ini()
+        except Exception:
+            ini_content = ""
 
     settings = _parse_ini_settings(ini_content)
 
@@ -182,6 +187,7 @@ def run_prusa_slice(
     material_density: float = 1.24,
     slicer_preset: Optional[dict] = None,
     enable_supports: bool = False,
+    printer_profile_path: Optional[str] = None,
 ) -> dict:
     """
     Run PrusaSlicer headless. Merges system/user/quote config into temp INI.
@@ -204,6 +210,7 @@ def run_prusa_slice(
         perimeters=perimeters,
         material_density=material_density,
         slicer_preset=slicer_preset,
+        printer_profile_path=printer_profile_path,
     )
 
     preset_label = "系统默认 (A1)"
@@ -262,6 +269,7 @@ def prusa_support_diff_stats(
     perimeters: int = 3,
     output_dir: Optional[str] = None,
     output_prefix: Optional[str] = None,
+    printer_profile_path: Optional[str] = None,
 ) -> dict:
     """Slice with & without supports; return support material diff + time."""
     result: dict = {
@@ -282,7 +290,8 @@ def prusa_support_diff_stats(
         gcode = os.path.join(out_dir, f"{prefix}_{'with' if supports else 'no'}_support.gcode")
         stats = run_prusa_slice(model_path, gcode,
                                 layer_height=layer_height, infill_percent=infill_percent,
-                                perimeters=perimeters, enable_supports=supports)
+                                perimeters=perimeters, enable_supports=supports,
+                                printer_profile_path=printer_profile_path)
         g = float(stats.get("filament_g") or 0)
         if g <= 0 and float(stats.get("filament_cm3") or 0) > 0:
             g = float(stats["filament_cm3"]) * 1.24

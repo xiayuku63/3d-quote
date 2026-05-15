@@ -36,6 +36,7 @@ async def get_quote(
     color: str = Form("White", min_length=1, max_length=40),
     use_bambu: Optional[bool] = Form(default=None),
     use_prusaslicer: Optional[bool] = Form(default=None),
+    printer_model: Optional[str] = Form(default=None),
     current_user=Depends(get_current_user),
 ):
     from .config import MEMBER_DISCOUNT_PERCENT
@@ -68,6 +69,8 @@ async def get_quote(
             pricing_config["use_bambu"] = use_bambu
         if use_prusaslicer is not None:
             pricing_config["use_prusaslicer"] = use_prusaslicer
+        if printer_model is not None:
+            pricing_config["printer_model"] = printer_model
 
         material_names = {str(m.get("name")) for m in user_materials if isinstance(m, dict)}
         if material not in material_names:
