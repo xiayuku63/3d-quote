@@ -84,7 +84,14 @@ function getRenderColorHex(colorKey) {
 }
 
 export function renderSTL(file, colorKey = 'Blue') {
-    const reader = new FileReader();
+    const ext = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : '';
+    if (ext !== 'stl') {
+        // Non-STL files: show placeholder in viewer
+        clearCurrentMesh();
+        previewPlaceholder.innerHTML = '<div style="text-align:center;padding-top:20%"><div style="font-size:4rem;margin-bottom:1rem">📦</div><p style="color:#64748b">' + ext.toUpperCase() + ' 格式暂不支持在线预览</p><p style="color:#94a3b8;font-size:0.8rem">上传后将自动切片报价</p></div>';
+        previewPlaceholder.classList.remove('hidden');
+        return;
+    }
     reader.onload = (event) => {
         try {
             const geometry = stlLoader.parse(event.target.result);
