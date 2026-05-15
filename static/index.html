@@ -526,44 +526,7 @@
                                             <option value="">请选择...</option>
                                         </select>
                                 </div>
-                                <!-- 选中预设内容编辑器 -->
-                                <div class="mt-3 border-t border-gray-100 pt-3" id="edit-preset-section">
-                                    <h6 class="text-xs font-medium text-gray-700 mb-2">编辑选中预设</h6>
-                                    <div class="flex items-center gap-2 mb-2">
-                                        <select id="edit-preset-select" class="flex-1 py-1.5 px-2 border border-gray-300 bg-white rounded-sm text-xs">
-                                            <option value="">— 请选择预设 —</option>
-                                        </select>
-                                        <button id="edit-preset-load-btn" type="button" class="h-[28px] px-3 rounded-md bg-indigo-600 text-white text-xs hover:bg-indigo-700">加载内容</button>
-                                    </div>
-                                    <div id="edit-preset-info" class="hidden text-xs text-gray-600 mb-1"></div>
-                                    <textarea id="edit-preset-content" rows="12" class="mt-1 w-full border border-gray-300 rounded-sm text-xs px-2 py-1 font-mono" placeholder="点击「加载内容」按钮加载选中预设的 .ini 内容进行编辑..." readonly></textarea>
-                                    <div class="flex items-center gap-2 mt-2">
-                                        <div class="flex-1">
-                                            <label class="block text-xs text-gray-600">另存为名称（填写后点击「另存为」）</label>
-                                            <input id="edit-preset-saveas-name" type="text" maxlength="60" class="mt-1 w-full border border-gray-300 rounded-sm text-xs px-2 py-1" placeholder="输入新预设名称..." />
-                                        </div>
-                                        <button id="edit-preset-save-btn" type="button" class="h-[30px] px-4 rounded-md bg-blue-600 text-white text-xs hover:bg-blue-700" disabled>保存</button>
-                                        <button id="edit-preset-saveas-btn" type="button" class="h-[30px] px-4 rounded-md bg-green-600 text-white text-xs hover:bg-green-700" disabled>另存为</button>
-                                    </div>
-                                    <p id="edit-preset-msg" class="text-xs hidden mt-1"></p>
-                                </div>
-                                <div class="mt-3 overflow-x-auto border border-gray-200 rounded-md">
-                                    <table class="min-w-full text-[11px] text-left">
-                                        <thead class="bg-gray-50 text-gray-600">
-                                            <tr>
-                                                <th class="px-2 py-2 w-20">ID</th>
-                                                <th class="px-2 py-2">名称</th>
-                                                <th class="px-2 py-2 w-20">扩展</th>
-                                                <th class="px-2 py-2 w-44">创建时间</th>
-                                                <th class="px-2 py-2 w-20 text-right">操作</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="slicer-presets-tbody" class="bg-white divide-y divide-gray-100">
-                                            <tr><td colspan="5" class="px-2 py-3 text-gray-500">暂无预设</td></tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
+                                
                         </div>
                                 <div id="uc-tab-security" class="uc-tab-pane hidden space-y-6">
                                     <div>
