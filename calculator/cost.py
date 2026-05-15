@@ -324,7 +324,7 @@ def calculate_cost(
 
             # Load printer profile for slicing
             _printer_profile = None
-            printer_id = cfg.get("printer_model", "")
+            printer_id = cfg.get("printer_model", "") or "bambu_a1"
             if printer_id:
                 from app.printers import PRINTER_MODELS
                 for pm in PRINTER_MODELS:
@@ -660,6 +660,7 @@ async def process_single_file(
             "dimensions": dimensions_str,
             "weight_g": total_weight,
             "estimated_time_h": total_print_time_h,
+            "unit_time_h": round(float((breakdown or {}).get("unit_time_h") or 0), 3),
             "cost_cny": total_cost,
             "unit_cost_cny": unit_cost,
             "quantity": quantity,

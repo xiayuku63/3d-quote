@@ -18,6 +18,7 @@ class QuoteFileResult(BaseModel):
     dimensions: str = ""
     weight_g: float = 0.0
     estimated_time_h: float = 0.0
+    unit_time_h: float = 0.0
     cost_cny: float = 0.0
     cost_cny_original: float = 0.0
     unit_cost_cny: float = 0.0

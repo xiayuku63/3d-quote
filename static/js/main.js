@@ -390,7 +390,7 @@
 
             // Pre-populate printer selectors before async load
             function preloadPrinterSelectors() {
-                for (const selId of ["gen-printer-model-2", "cfg-printer-model", "cfg-printer-model-main", "opt-printer", "opt-printer-2", "main-printer"]) {
+                for (const selId of ["cfg-printer-model", "cfg-printer-model-main", "opt-printer"]) {
                     const sel = document.getElementById(selId);
                     if (!sel) continue;
                     sel.innerHTML = "<option value=\"\">加载中...</option>";
@@ -403,7 +403,7 @@
                 if (!resp.ok) return;
                 const data = await resp.json();
                 const printers = data.items || [];
-                for (const selId of ["gen-printer-model-2", "cfg-printer-model", "cfg-printer-model-main", "opt-printer", "opt-printer-2"]) {
+                for (const selId of ["cfg-printer-model", "cfg-printer-model-main", "opt-printer"]) {
                     const sel = document.getElementById(selId);
                     if (!sel) continue;
                     sel.innerHTML = "<option value=\"\">请选择打印机...</option>";
@@ -500,7 +500,7 @@
                     return;
                 }
                 // Load printer model dimensions
-                const pmSelect = document.getElementById("cfg-printer-model-main") || document.getElementById("gen-printer-model-2");
+                const pmSelect = document.getElementById("cfg-printer-model-main") || document.getElementById();
                 let bed_width = 256, bed_depth = 256, bed_height = 256;
                 if (pmSelect && pmSelect.value) {
                     const opt = pmSelect.selectedOptions[0];
@@ -723,14 +723,14 @@
             function refreshOptionsSummary() {
                 const colorText = formatColorLabel(quoteOptions.color);
                 if (optionsSummary) {
-                    const pm = document.getElementById("main-printer");
+                    const pm = document.getElementById();
                     const pmName = (pm && pm.selectedOptions[0]) ? pm.selectedOptions[0].text : "未选择";
                     optionsSummary.textContent = `打印机：${pmName} | 材料 ${quoteOptions.material}，颜色 ${colorText}，数量 ${quoteOptions.quantity}`;
                 }
             }
 
 function buildPrinterOptionsHtml(selectedId) {
-                const sel = document.getElementById("main-printer") || document.getElementById("opt-printer");
+                const sel = document.getElementById() || document.getElementById("opt-printer");
                 if (!sel || sel.options.length <= 1) return '<option value="">选择打印机...</option>';
                 let html = '<option value="">选择打印机...</option>';
                 for (const opt of sel.options) {
@@ -752,7 +752,7 @@ function buildPrinterOptionsHtml(selectedId) {
             async function quoteSingleFileWithOptions(file, options) {
                 const formData = new FormData();
                 formData.append("files", file);
-                const optPrinter = document.getElementById("main-printer") || document.getElementById("opt-printer") || document.getElementById("opt-printer-2");
+                const optPrinter = document.getElementById() || document.getElementById("opt-printer") || document.getElementById();
                 if (optPrinter && optPrinter.value) formData.append("printer_model", optPrinter.value);
                 formData.append("material", options.material);
                 formData.append("color", options.color);
@@ -1753,7 +1753,7 @@ function buildPrinterOptionsHtml(selectedId) {
             async function quoteSelectedFiles(selectedFiles) {
                 const formData = new FormData();
                 selectedFiles.forEach((file) => formData.append("files", file));
-                const pmOpt = document.getElementById("main-printer") || document.getElementById("opt-printer");
+                const pmOpt = document.getElementById() || document.getElementById("opt-printer");
                 if (pmOpt && pmOpt.value) formData.append("printer_model", pmOpt.value);
                 formData.append("material", quoteOptions.material);
                 formData.append("color", quoteOptions.color);
@@ -1859,6 +1859,7 @@ function buildPrinterOptionsHtml(selectedId) {
                             <td class="px-2 py-1.5"><input data-field="quantity" type="number" min="1" value="${item.quantity}" class="row-edit w-14 text-[11px] border border-gray-300 rounded px-1 py-0.5" /></td>
                             <td class="px-2 py-1.5 text-[10px] leading-tight">${geometryText}</td>
                             <td class="px-2 py-1.5">${item.weight_g}</td>
+                            <td class="px-2 py-1.5">${formatTimeHMS(item.unit_time_h || (item.estimated_time_h / Math.max(1, item.quantity)))}</td>
                             <td class="px-2 py-1.5">${formatTimeHMS(item.estimated_time_h)}</td>
                             <td class="px-2 py-1.5">¥ ${item.unit_cost_cny}</td>
                             <td class="px-2 py-1.5">¥ ${item.cost_cny}</td>
