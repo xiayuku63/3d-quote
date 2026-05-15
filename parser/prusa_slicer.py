@@ -61,7 +61,12 @@ def parse_prusa_gcode_stats(gcode_path: str) -> dict:
         return result
 
     with open(gcode_path, "r", encoding="utf-8", errors="replace") as f:
-        content = f.read(4096 * 64)  # Read first 256KB — stats are always at top
+        # Stats are at the end of the file — read last 256KB
+        f.seek(0, os.SEEK_END)
+        file_size = f.tell()
+        chunk_size = min(256 * 1024, file_size)
+        f.seek(file_size - chunk_size)
+        content = f.read(chunk_size)
 
     if m := re.search(r"; filament used \[mm\] = ([\d.]+)", content):
         result["filament_mm"] = float(m.group(1))

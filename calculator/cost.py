@@ -311,6 +311,16 @@ def calculate_cost(
         try:
             logger.info(f"PrusaSlicer enabled, slicing: {model_path}")
             prusaslicer_used = True
+
+            # Convert 3MF to STL for PrusaSlicer (it can't read Bambu-format 3MF)
+            actual_slice_path = model_path
+            _tmp_3mf_stl = None
+            if model_path.lower().endswith(".3mf"):
+                from parser.geometry import _extract_geometry_from_3mf
+                _tmp_3mf_stl = _extract_geometry_from_3mf(model_path)
+                if _tmp_3mf_stl:
+                    actual_slice_path = _tmp_3mf_stl
+                    logger.info(f"3MF converted to STL for slicing: {_tmp_3mf_stl}")
             base_name = os.path.splitext(os.path.basename(model_path))[0]
             output_prefix = _sanitize_filename_component(base_name, fallback="model", max_len=60)
             user_folder = f"user_{current_user['id']}_{current_user['username']}" if current_user else "anonymous"
@@ -320,7 +330,7 @@ def calculate_cost(
             output_gcode = os.path.join(outputs_job_dir, f"{output_prefix}.gcode")
             if bambu_support_mode == "diff":
                 st = prusa_support_diff_stats(
-                    model_path,
+                    actual_slice_path,
                     layer_height=layer_height_mm,
                     infill_percent=infill_percent,
                     perimeters=perimeters or 3,
@@ -345,7 +355,7 @@ def calculate_cost(
                     preset_used = str(st["preset_used"])
             else:
                 stats = run_prusa_slice(
-                    model_path, output_gcode,
+                    actual_slice_path, output_gcode,
                     layer_height=layer_height_mm,
                     infill_percent=infill_percent,
                     perimeters=perimeters or 3,
@@ -371,6 +381,10 @@ def calculate_cost(
             slicer_time_s = None
             slicer_filament_g_per_part = None
             bambu_error_msg = f"PrusaSlicer: {e}"
+            # Clean up 3MF temp STL
+            if _tmp_3mf_stl and os.path.exists(_tmp_3mf_stl):
+                try: os.unlink(_tmp_3mf_stl)
+                except OSError: pass
 
     # ---- Bambu Studio (fallback, requires display/Wayland) ----
     if use_bambu and model_path and os.path.exists(model_path):
