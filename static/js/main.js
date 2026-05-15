@@ -1003,6 +1003,7 @@
                 renderAuthUI();
                 await fetchUserSettings();
                 loadQuoteHistory(authToken);
+                fetchPrinterModels();
                 closeLoginModal();
                 errorContainer.classList.add('hidden');
                 const filesToQuote = pendingQuoteFiles;
@@ -1909,6 +1910,9 @@
 
             // 预览区域自适应
             window.addEventListener('resize', updateViewerSize);
+
+            // Load printers on page load (no auth required)
+            fetchPrinterModels();
 
             async function initializeAuth() {
                 loadUserSession();
