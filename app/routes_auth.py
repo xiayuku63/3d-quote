@@ -7,6 +7,12 @@ from typing import Optional, List
 from fastapi import Request, Depends, HTTPException
 from fastapi.responses import JSONResponse, Response
 
+from .schemas.auth import (
+    TokenResponse, CaptchaResponse,
+    VerifyCodeRequest, VerifyCodeConfirmRequest,
+    PasswordResetRequest, PasswordResetConfirmRequest,
+)
+
 from .config import (
     CAPTCHA_LENGTH,
     CAPTCHA_TTL_SECONDS,

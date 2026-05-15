@@ -5,7 +5,6 @@ import time
 import logging
 
 from fastapi import Request
-from fastapi.responses import JSONResponse
 
 from .config import (
     IS_PRODUCTION,
@@ -18,6 +17,7 @@ from .rate_limiter import PersistentRateLimiter
 from .metrics import InMemoryMetrics
 from .utils import get_client_ip
 from .logging_config import log_request
+from .errors import error_response
 
 rate_limiter = PersistentRateLimiter()
 metrics = InMemoryMetrics()
@@ -33,31 +33,31 @@ async def security_middleware(request: Request, call_next):
     # Rate limiting by endpoint
     if path in {"/api/auth/login", "/api/auth/register"} and method == "POST":
         if not rate_limiter.is_allowed(f"auth:{client_ip}", AUTH_RATE_LIMIT_PER_MIN):
-            resp = JSONResponse(status_code=429, content={"detail": "请求过于频繁，请稍后再试"})
+            resp = error_response(42900, "请求过于频繁，请稍后再试", 429)
             resp.headers["X-Request-ID"] = request.state.request_id
             log_request(logger, method, path, 429, 0, client_ip, request.state.request_id)
             return resp
     if path == "/api/auth/register/check" and method == "POST":
         if not rate_limiter.is_allowed(f"auth_check:{client_ip}", AUTH_RATE_LIMIT_PER_MIN):
-            resp = JSONResponse(status_code=429, content={"detail": "请求过于频繁，请稍后再试"})
+            resp = error_response(42900, "请求过于频繁，请稍后再试", 429)
             resp.headers["X-Request-ID"] = request.state.request_id
             log_request(logger, method, path, 429, 0, client_ip, request.state.request_id)
             return resp
     if path == "/api/auth/verify/send" and method == "POST":
         if not rate_limiter.is_allowed(f"verify_send_ip:{client_ip}", VERIFY_SEND_RATE_LIMIT_PER_10MIN, window_seconds=600):
-            resp = JSONResponse(status_code=429, content={"detail": "请求过于频繁，请稍后再试"})
+            resp = error_response(42900, "请求过于频繁，请稍后再试", 429)
             resp.headers["X-Request-ID"] = request.state.request_id
             log_request(logger, method, path, 429, 0, client_ip, request.state.request_id)
             return resp
     if path == "/api/auth/captcha" and method == "GET":
         if not rate_limiter.is_allowed(f"captcha:{client_ip}", CAPTCHA_RATE_LIMIT_PER_MIN):
-            resp = JSONResponse(status_code=429, content={"detail": "请求过于频繁，请稍后再试"})
+            resp = error_response(42900, "请求过于频繁，请稍后再试", 429)
             resp.headers["X-Request-ID"] = request.state.request_id
             log_request(logger, method, path, 429, 0, client_ip, request.state.request_id)
             return resp
     if path == "/api/quote" and method == "POST":
         if not rate_limiter.is_allowed(f"quote:{client_ip}", QUOTE_RATE_LIMIT_PER_MIN):
-            resp = JSONResponse(status_code=429, content={"detail": "报价请求过于频繁，请稍后再试"})
+            resp = error_response(42900, "报价请求过于频繁，请稍后再试", 429)
             resp.headers["X-Request-ID"] = request.state.request_id
             log_request(logger, method, path, 429, 0, client_ip, request.state.request_id)
             return resp

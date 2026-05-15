@@ -4,28 +4,28 @@ import time
 from typing import Optional
 from datetime import datetime, timezone
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 
 from .config import JWT_SECRET_KEY, JWT_ALGORITHM, MEMBER_DISCOUNT_PERCENT, ADMIN_USERNAMES, TERMS_VERSION, PRIVACY_VERSION
 from .database import get_db_conn
 from .auth import get_user_by_id
+from .errors import UnauthorizedError, ForbiddenError, ValidationError
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
 def get_current_user(token: str = Depends(oauth2_scheme)):
-    credentials_exception = HTTPException(status_code=401, detail="登录已失效，请重新登录")
     try:
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
         user_id = int(payload.get("sub", "0"))
     except (JWTError, ValueError):
-        raise credentials_exception
+        raise UnauthorizedError("登录已失效，请重新登录")
 
     user = get_user_by_id(user_id)
     if not user:
-        raise credentials_exception
+        raise UnauthorizedError("登录已失效，请重新登录")
     return user
 
 
@@ -63,7 +63,7 @@ def is_member_user(user_row) -> bool:
 
 def require_legal_acceptance_or_raise(accept_terms: bool, accept_privacy: bool) -> None:
     if not bool(accept_terms) or not bool(accept_privacy):
-        raise HTTPException(status_code=400, detail="请先阅读并同意《用户协议》和《隐私政策》")
+        raise ValidationError("请先阅读并同意《用户协议》和《隐私政策》")
 
 
 def record_legal_acceptance(user_id: int) -> None:
@@ -82,7 +82,7 @@ def record_legal_acceptance(user_id: int) -> None:
 
 def require_admin(current_user):
     if not is_admin_user(current_user):
-        raise HTTPException(status_code=403, detail="无管理员权限")
+        raise ForbiddenError("无管理员权限")
     return current_user
 
 

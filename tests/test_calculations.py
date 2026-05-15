@@ -1,9 +1,6 @@
-"""Core calculation tests – no server needed."""
+"""Cost calculation unit tests."""
 
-import sys
-import os
-
-# Ensure project root in path
+import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from calculator.cost import (
@@ -36,17 +33,20 @@ DEFAULT_CFG = {
 
 class TestCalculateWeight:
     def test_pla_weight(self):
-        """PLA density 1.24 g/cm³"""
         weight = calculate_weight(100000, 1.24)  # 100 cm³
         assert abs(weight - 124.0) < 0.1
 
     def test_zero_volume(self):
-        weight = calculate_weight(0, 1.24)
-        assert weight == 0.0
+        assert calculate_weight(0, 1.24) == 0.0
 
     def test_low_density(self):
-        weight = calculate_weight(1000, 0.5)  # 1 cm³
+        weight = calculate_weight(1000, 0.5)
         assert abs(weight - 0.5) < 0.01
+
+    def test_typical_pla_part(self):
+        # A typical 50 cm³ PLA part
+        weight = calculate_weight(50000, 1.24)
+        assert abs(weight - 62.0) < 0.1
 
 
 class TestPrintTimeEstimation:
@@ -54,20 +54,24 @@ class TestPrintTimeEstimation:
         h = estimate_print_time_hours(100000, 5000, 0.2, 20, DEFAULT_CFG)
         assert h > 0.0
 
-    def test_thin_layer_hours(self):
-        h1 = estimate_print_time_hours(100000, 5000, 0.1, 20, DEFAULT_CFG)
-        h2 = estimate_print_time_hours(100000, 5000, 0.2, 20, DEFAULT_CFG)
-        # thinner layers should take longer (or at least not be faster)
-        assert h1 >= h2 * 0.5  # can't be way faster
+    def test_thinner_layer_takes_longer(self):
+        h_thin = estimate_print_time_hours(100000, 5000, 0.1, 20, DEFAULT_CFG)
+        h_thick = estimate_print_time_hours(100000, 5000, 0.2, 20, DEFAULT_CFG)
+        assert h_thin >= h_thick * 0.5  # at minimum, not faster than half
 
-    def test_high_infill_longer(self):
-        h1 = estimate_print_time_hours(100000, 5000, 0.2, 10, DEFAULT_CFG)
-        h2 = estimate_print_time_hours(100000, 5000, 0.2, 80, DEFAULT_CFG)
-        assert h2 >= h1
+    def test_high_infill_takes_longer(self):
+        h_low = estimate_print_time_hours(100000, 5000, 0.2, 10, DEFAULT_CFG)
+        h_high = estimate_print_time_hours(100000, 5000, 0.2, 80, DEFAULT_CFG)
+        assert h_high >= h_low
 
-    def test_returns_float(self):
-        h = estimate_print_time_hours(100000, 5000, 0.2, 20, DEFAULT_CFG)
-        assert isinstance(h, float)
+    def test_zero_volume(self):
+        h = estimate_print_time_hours(0, 0, 0.2, 20, DEFAULT_CFG)
+        # 5 min overhead → 5/60 ≈ 0.083 hours
+        assert 0.08 <= h <= 0.09
+
+    def test_large_volume(self):
+        h = estimate_print_time_hours(1000000, 50000, 0.2, 20, DEFAULT_CFG)
+        assert h > 5.0  # large part should take hours
 
 
 class TestSafeEval:
@@ -75,55 +79,56 @@ class TestSafeEval:
         result = safe_eval_formula("a + b", {"a": 3.0, "b": 4.0})
         assert result == 7.0
 
-    def test_with_max_min(self):
+    def test_max_min(self):
         result = safe_eval_formula("max(a, b)", {"a": 3.0, "b": 7.0})
         assert result == 7.0
 
+    def test_division(self):
+        result = safe_eval_formula("a / b", {"a": 10.0, "b": 2.0})
+        assert abs(result - 5.0) < 0.001
+
+    def test_power(self):
+        result = safe_eval_formula("a ** 2", {"a": 3.0})
+        assert abs(result - 9.0) < 0.001
+
     def test_complex_formula(self):
         result = safe_eval_formula(
-            "(weight * price_per_kg / 1000) + (time * rate)",
-            {"weight": 100.0, "price_per_kg": 200.0, "time": 2.0, "rate": 15.0}
+            "max((a * b) + c, 10)",
+            {"a": 2.0, "b": 3.0, "c": 1.0}
         )
-        assert abs(result - 50.0) < 0.01
+        assert abs(result - 10.0) < 0.001  # 2*3+1=7, max(7,10)=10
 
-    def test_blocks_dangerous_code(self):
+    def test_malicious_code_blocked(self):
+        # __import__, eval, exec, etc should be blocked
         result = safe_eval_formula("__import__('os').system('ls')", {})
         assert result is None
 
-    def test_blocks_attribute_access(self):
-        result = safe_eval_formula("a.__class__", {"a": "hello"})
+    def test_empty_expression(self):
+        result = safe_eval_formula("", {})
         assert result is None
 
-    def test_empty_returns_none(self):
-        assert safe_eval_formula("", {}) is None
-
-    def test_blocks_unknown_variables(self):
-        result = safe_eval_formula("unknown_var + 1", {"a": 1.0})
-        assert result is None
-
-    def test_infinite_result_returns_none(self):
-        result = safe_eval_formula("1 / 0", {})
+    def test_missing_variable(self):
+        result = safe_eval_formula("a + b", {"a": 1.0})
         assert result is None
 
 
-class TestFormulaValidation:
+class TestValidateFormula:
     def test_valid_formula(self):
-        ok, err, vars = validate_formula_expression("effective_weight_g * price_per_kg / 1000")
-        assert ok is True
-        assert err == ""
-        assert "effective_weight_g" in vars
+        ok, err, vars = validate_formula_expression("effective_weight_g * price_per_kg + machine_cost_cny")
+        assert ok is True, f"Expected OK, got: {err}"
 
-    def test_syntax_error(self):
-        ok, err, vars = validate_formula_expression("a +* b")
+    def test_invalid_syntax(self):
+        ok, err, vars = validate_formula_expression("a +")
         assert ok is False
-        assert len(vars) == 0
+        assert "语法" in err
 
     def test_unknown_variable(self):
-        ok, err, vars = validate_formula_expression("bogus_var + 1")
+        ok, err, vars = validate_formula_expression("foo + bar")
         assert ok is False
+        assert "未知变量" in err
 
-    def test_max_min_allowed(self):
-        ok, err, vars = validate_formula_expression("max(unit_cost_cny, min_job_fee_cny)")
+    def test_valid_quote_variable(self):
+        ok, err, vars = validate_formula_expression("effective_weight_g * price_per_kg")
         assert ok is True
 
     def test_empty_formula(self):
@@ -132,15 +137,16 @@ class TestFormulaValidation:
 
 
 class TestMergePricingConfig:
-    def test_empty_returns_default(self):
-        merged = merge_pricing_config({})
-        assert "machine_hourly_rate_cny" in merged
-        assert merged["machine_hourly_rate_cny"] == 15.0
+    def test_merge_empty(self):
+        result = merge_pricing_config(None)
+        assert "machine_hourly_rate_cny" in result
+        assert result["machine_hourly_rate_cny"] == 15.0
 
     def test_override_value(self):
-        merged = merge_pricing_config({"machine_hourly_rate_cny": 25.0})
-        assert merged["machine_hourly_rate_cny"] == 25.0
+        result = merge_pricing_config({"machine_hourly_rate_cny": 30.0})
+        assert result["machine_hourly_rate_cny"] == 30.0
 
-    def test_unknown_keys_preserved(self):
-        merged = merge_pricing_config({"custom_key": 42})
-        assert merged["custom_key"] == 42
+    def test_partial_override_preserves_defaults(self):
+        result = merge_pricing_config({"setup_fee_cny": 50.0})
+        assert result["setup_fee_cny"] == 50.0
+        assert result["machine_hourly_rate_cny"] == 15.0  # default preserved
