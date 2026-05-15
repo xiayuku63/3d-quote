@@ -463,7 +463,32 @@
                                             </div>
                                         </div>
                                         <div class="mt-3 text-right">
-                                            <button id="slicer-preset-generate-btn" type="button" class="h-[30px] px-3 rounded-md bg-green-600 text-white text-xs hover:bg-green-700">生成并保存预设</button>
+                                            <div class="hidden">
+                                            <input id="gen-bed-width" type="number" value="256" />
+                                            <input id="gen-bed-depth" type="number" value="256" />
+                                            <input id="gen-bed-height" type="number" value="256" />
+                                        </div>
+                                        <button id="slicer-preset-generate-btn" type="button" class="h-[30px] px-3 rounded-md bg-green-600 text-white text-xs hover:bg-green-700">生成并保存预设</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                    <div class="mt-3">
+                                        <label class="block text-xs text-gray-600 mb-1">已保存的预设</label>
+                                        <div class="overflow-x-auto border border-gray-200 rounded-md">
+                                            <table class="min-w-full text-xs text-left">
+                                                <thead class="bg-gray-50 text-gray-600">
+                                                    <tr>
+                                                        <th class="px-2 py-2 w-20">ID</th>
+                                                        <th class="px-2 py-2">名称</th>
+                                                        <th class="px-2 py-2 w-20">扩展</th>
+                                                        <th class="px-2 py-2 w-44">创建时间</th>
+                                                        <th class="px-2 py-2 w-20 text-right">操作</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="slicer-presets-tbody" class="bg-white divide-y divide-gray-100">
+                                                    <tr><td colspan="5" class="px-2 py-3 text-gray-500">暂无预设</td></tr>
+                                                </tbody>
+                                            </table>
                                         </div>
                                     </div>
                                     <div class="mt-3">
