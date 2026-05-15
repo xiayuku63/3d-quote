@@ -94,7 +94,6 @@
             const cfgSupportPricePerG = document.getElementById('cfg-support-price-per-g');
             const cfgUnitCostFormula = document.getElementById('cfg-unit-cost-formula');
             const cfgTotalCostFormula = document.getElementById('cfg-total-cost-formula');
-            const slicerPresetNameInput = document.getElementById('slicer-preset-name');
             const slicerPresetFileInput = document.getElementById('slicer-preset-file');
             const slicerPresetUploadBtn = document.getElementById('slicer-preset-upload-btn');
             const slicerPresetsRefreshBtn = document.getElementById('slicer-presets-refresh-btn');
@@ -391,7 +390,7 @@
 
             // Pre-populate printer selectors before async load
             function preloadPrinterSelectors() {
-                for (const selId of ["gen-printer-model", "gen-printer-model-2", "cfg-printer-model", "cfg-printer-model-main", "opt-printer", "opt-printer-2", "main-printer"]) {
+                for (const selId of ["gen-printer-model-2", "cfg-printer-model", "cfg-printer-model-main", "opt-printer", "opt-printer-2", "main-printer"]) {
                     const sel = document.getElementById(selId);
                     if (!sel) continue;
                     sel.innerHTML = "<option value=\"\">加载中...</option>";
@@ -404,7 +403,7 @@
                 if (!resp.ok) return;
                 const data = await resp.json();
                 const printers = data.items || [];
-                for (const selId of ["gen-printer-model", "gen-printer-model-2", "cfg-printer-model", "cfg-printer-model-main", "opt-printer", "opt-printer-2"]) {
+                for (const selId of ["gen-printer-model-2", "cfg-printer-model", "cfg-printer-model-main", "opt-printer", "opt-printer-2"]) {
                     const sel = document.getElementById(selId);
                     if (!sel) continue;
                     sel.innerHTML = "<option value=\"\">请选择打印机...</option>";
