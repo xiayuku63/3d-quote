@@ -500,7 +500,7 @@
                     return;
                 }
                 // Load printer model dimensions
-                const pmSelect = document.getElementById("gen-printer-model-2");
+                const pmSelect = document.getElementById("cfg-printer-model-main") || document.getElementById("gen-printer-model-2");
                 let bed_width = 256, bed_depth = 256, bed_height = 256;
                 if (pmSelect && pmSelect.value) {
                     const opt = pmSelect.selectedOptions[0];
