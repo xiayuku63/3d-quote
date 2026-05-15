@@ -389,7 +389,17 @@
                 });
             }
 
-            async function fetchPrinterModels() {
+            // Pre-populate printer selectors before async load
+            function preloadPrinterSelectors() {
+                for (const selId of ["gen-printer-model", "gen-printer-model-2", "cfg-printer-model", "cfg-printer-model-main", "opt-printer", "opt-printer-2"]) {
+                    const sel = document.getElementById(selId);
+                    if (!sel) continue;
+                    sel.innerHTML = "<option value=\"\">加载中...</option>";
+                }
+            }
+            preloadPrinterSelectors();
+
+                        async function fetchPrinterModels() {
                 const resp = await authFetch("/api/slicer/printers");
                 if (!resp.ok) return;
                 const data = await resp.json();
