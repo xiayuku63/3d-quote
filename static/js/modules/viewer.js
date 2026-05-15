@@ -6,6 +6,7 @@ import { normalizeColorToken } from './state.js';
 
 let scene, camera, renderer, controls, stlLoader, currentMesh;
 let previewContainer, previewPlaceholder;
+let initialised = false;
 
 export function initViewer(previewContainerEl, previewPlaceholderEl) {
     previewContainer = previewContainerEl;
