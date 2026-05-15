@@ -410,7 +410,7 @@
                     printers.forEach(p => {
                         const opt = document.createElement("option");
                         opt.value = p.id;
-                        opt.textContent = p.icon + " " + p.name + " (\u2009"+p.bed_width+"x"+p.bed_depth+"x"+p.bed_height+" mm)";
+                        opt.textContent = p.name + " (\u2009"+p.bed_width+"x"+p.bed_depth+"x"+p.bed_height+" mm)";
                         sel.appendChild(opt);
                     });
                 }
