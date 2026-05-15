@@ -10,3 +10,5 @@ pillow
 pydantic-settings
 python-docx
 openpyxl
+sqlalchemy
+alembic

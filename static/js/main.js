@@ -1,6 +1,7 @@
-        import * as THREE from 'three';
-        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { initViewer, renderSTL, buildPlaceholderThumbnail, updateViewerSize } from './modules/viewer.js';
+        import { initQuoteHistory, loadQuoteHistory } from './modules/history.js';
         import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+        import * as THREE from 'three';
 
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -704,170 +705,37 @@
                 return data.results && data.results.length > 0 ? data.results[0] : { filename: file.name, status: "failed", error: "空响应" };
             }
 
-            // Three.js viewer setup
-            const scene = new THREE.Scene();
-            scene.background = new THREE.Color(0xffffff);
-
-            const camera = new THREE.PerspectiveCamera(45, previewContainer.clientWidth / previewContainer.clientHeight, 0.1, 10000);
-            camera.position.set(0, 0, 120);
-
-            const renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setPixelRatio(window.devicePixelRatio || 1);
-            renderer.setSize(previewContainer.clientWidth, previewContainer.clientHeight);
-            previewContainer.appendChild(renderer.domElement);
-
-            const controls = new OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true;
-            controls.dampingFactor = 0.08;
-
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-            scene.add(ambientLight);
-            const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
-            dirLight.position.set(80, 80, 120);
-            scene.add(dirLight);
-
-            const gridHelper = new THREE.GridHelper(200, 20, 0x334155, 0x1e293b);
-            gridHelper.position.y = -40;
-            scene.add(gridHelper);
-
-            const stlLoader = new STLLoader();
-            let currentMesh = null;
-
-            function animate() {
-                requestAnimationFrame(animate);
-                controls.update();
-                renderer.render(scene, camera);
-            }
-            animate();
-
-            function fitCameraToMesh(meshObject) {
-                const box = new THREE.Box3().setFromObject(meshObject);
-                const size = box.getSize(new THREE.Vector3());
-                const center = box.getCenter(new THREE.Vector3());
-                const maxDim = Math.max(size.x, size.y, size.z);
-
-                const fov = camera.fov * (Math.PI / 180);
-                let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
-                cameraZ *= 1.6;
-
-                camera.position.set(center.x, center.y, center.z + cameraZ);
-                camera.near = Math.max(maxDim / 100, 0.1);
-                camera.far = Math.max(maxDim * 20, 1000);
-                camera.updateProjectionMatrix();
-
-                controls.target.copy(center);
-                controls.update();
-            }
+            // Three.js viewer setup (delegated to modules/viewer.js)
+            initViewer(previewContainer, previewPlaceholder);
 
             function applyAxonometricRotation(meshObject) {
                 meshObject.rotation.x = -Math.PI / 4;
                 meshObject.rotation.z = Math.PI / 4;
             }
 
-            function renderSTL(file, colorKey = "Blue") {
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    try {
-                        const geometry = stlLoader.parse(event.target.result);
-                        geometry.computeVertexNormals();
-                        geometry.center();
-
-                        clearCurrentMesh();
-
-                        const material = new THREE.MeshStandardMaterial({
-                            color: getRenderColorHex(colorKey),
-                            metalness: 0.15,
-                            roughness: 0.65
-                        });
-                        currentMesh = new THREE.Mesh(geometry, material);
-                        currentMesh.rotation.set(0, 0, 0);
-                        scene.add(currentMesh);
-                        fitCameraToMesh(currentMesh);
-                        previewPlaceholder.classList.add('hidden');
-                    } catch (e) {
-                        previewPlaceholder.textContent = '预览失败，请确认 STL 文件有效';
-                        previewPlaceholder.classList.remove('hidden');
-                    }
-                };
-                reader.readAsArrayBuffer(file);
-            }
-
-            function clearCurrentMesh() {
-                if (!currentMesh) return;
-                scene.remove(currentMesh);
-                currentMesh.geometry.dispose();
-                currentMesh.material.dispose();
-                currentMesh = null;
-            }
-
-            function buildPlaceholderThumbnail(ext) {
-                const label = (ext || 'file').toUpperCase();
-                const svg = `
-                <svg xmlns="http://www.w3.org/2000/svg" width="200" height="120" viewBox="0 0 200 120">
-                    <defs>
-                        <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-                            <stop offset="0%" stop-color="#ffffff"/>
-                            <stop offset="100%" stop-color="#f8fafc"/>
-                        </linearGradient>
-                    </defs>
-                    <rect width="200" height="120" rx="8" fill="url(#g)"/>
-                    <rect x="12" y="12" width="176" height="96" rx="6" fill="none" stroke="#cbd5e1"/>
-                    <text x="100" y="62" text-anchor="middle" fill="#334155" font-size="18" font-family="Arial, sans-serif" font-weight="700">${label}</text>
-                    <text x="100" y="84" text-anchor="middle" fill="#64748b" font-size="11" font-family="Arial, sans-serif">Static Preview</text>
-                </svg>`;
-                return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-            }
-
             function getRenderColorHex(colorKey) {
                 const key = normalizeColorToken(colorKey);
                 const palette = {
-                    White: 0xf3f4f6,
-                    Black: 0x111827,
-                    Gray: 0x9ca3af,
-                    Red: 0xef4444,
-                    Blue: 0x3b82f6,
-                    Green: 0x22c55e,
-                    Yellow: 0xeab308,
-                    Orange: 0xf97316,
-                    Purple: 0xa855f7,
-                    Pink: 0xec4899,
-                    Brown: 0x8b5e3c,
-                    白色: 0xf3f4f6,
-                    黑色: 0x111827,
-                    灰色: 0x9ca3af,
-                    红色: 0xef4444,
-                    蓝色: 0x3b82f6,
-                    绿色: 0x22c55e,
-                    黄色: 0xeab308,
-                    橙色: 0xf97316,
-                    紫色: 0xa855f7,
-                    粉色: 0xec4899,
-                    棕色: 0x8b5e3c,
+                    White: 0xf3f4f6, Black: 0x111827, Gray: 0x9ca3af,
+                    Red: 0xef4444, Blue: 0x3b82f6, Green: 0x22c55e,
+                    Yellow: 0xeab308, Orange: 0xf97316, Purple: 0xa855f7,
+                    Pink: 0xec4899, Brown: 0x8b5e3c,
+                    白色: 0xf3f4f6, 黑色: 0x111827, 灰色: 0x9ca3af,
+                    红色: 0xef4444, 蓝色: 0x3b82f6, 绿色: 0x22c55e,
+                    黄色: 0xeab308, 橙色: 0xf97316, 紫色: 0xa855f7,
+                    粉色: 0xec4899, 棕色: 0x8b5e3c,
                 };
                 if (palette[key] !== undefined) return palette[key];
-
                 const hex6 = /^#([0-9a-fA-F]{6})$/;
-                const hex3 = /^#([0-9a-fA-F]{3})$/;
-                const ox6 = /^0x([0-9a-fA-F]{6})$/;
                 if (hex6.test(key)) return Number.parseInt(key.slice(1), 16);
-                if (hex3.test(key)) {
-                    const s = key.slice(1);
-                    const expanded = `${s[0]}${s[0]}${s[1]}${s[1]}${s[2]}${s[2]}`;
-                    return Number.parseInt(expanded, 16);
-                }
-                if (ox6.test(key)) return Number.parseInt(key.slice(2), 16);
-
-                // Try CSS color formats like rgb(...), hsl(...), and named colors.
                 try {
                     const parsed = new THREE.Color();
                     parsed.setStyle(key);
                     return parsed.getHex();
                 } catch (e) {}
-
-                // Stable fallback for custom names: same name => same thumbnail color.
-                const raw = String(key || "custom");
+                const raw = String(key || 'custom');
                 let hash = 0;
-                for (let i = 0; i < raw.length; i += 1) {
+                for (let i = 0; i < raw.length; i++) {
                     hash = ((hash << 5) - hash) + raw.charCodeAt(i);
                     hash |= 0;
                 }
@@ -876,6 +744,8 @@
                 fallback.setHSL(hue / 360, 0.58, 0.56);
                 return fallback.getHex();
             }
+
+            const stlLoader = new STLLoader();
 
             async function buildStlThumbnail(file, colorKey = "Blue") {
                 const arrayBuffer = await file.arrayBuffer();
@@ -1088,9 +958,8 @@
                 loadSlicerPresetSelection();
                 renderAuthUI();
                 await fetchUserSettings();
-                loadQuoteHistory();
+                loadQuoteHistory(authToken);
                 closeLoginModal();
-                errorMsg.textContent = '';
                 errorContainer.classList.add('hidden');
                 const filesToQuote = pendingQuoteFiles;
                 pendingQuoteFiles = null;
@@ -1796,7 +1665,7 @@
                 renderResultsTable();
                 recalcSummaryFromCurrentResults();
                 // Reload history after successful quote
-                setTimeout(loadQuoteHistory, 500);
+                setTimeout(() => loadQuoteHistory(authToken), 500);
             }
 
             function renderResultsTable() {
@@ -1993,13 +1862,7 @@
             }
 
             // 预览区域自适应
-            window.addEventListener('resize', () => {
-                const width = previewContainer.clientWidth;
-                const height = previewContainer.clientHeight;
-                camera.aspect = width / height;
-                camera.updateProjectionMatrix();
-                renderer.setSize(width, height);
-            });
+            window.addEventListener('resize', updateViewerSize);
 
             async function initializeAuth() {
                 loadUserSession();
@@ -2282,65 +2145,8 @@
                 });
             }
 
-            // ── Quote history (standalone modal, same level as user center) ──
-            const historyTbody = document.getElementById('history-tbody');
-            const historyRefreshBtn = document.getElementById('history-refresh-btn');
-            const quoteHistoryModal = document.getElementById('quote-history-modal');
-            const quoteHistoryBackdrop = document.getElementById('quote-history-backdrop');
-            const historyCloseBtn = document.getElementById('history-close-btn');
-            const openQuoteHistoryBtn = document.getElementById('open-quote-history-btn');
-
-            async function loadQuoteHistory() {
-                if (!authToken || !historyTbody) return;
-                try {
-                    const resp = await fetch('/api/quote/history?limit=50', {
-                        headers: { 'Authorization': `Bearer ${authToken}` }
-                    });
-                    if (!resp.ok) return;
-                    const data = await resp.json();
-                    if (!data.items || data.items.length === 0) {
-                        historyTbody.innerHTML = '<tr><td class="px-3 py-12 text-gray-400 text-center" colspan="9"><div class="text-6xl mb-3">📭</div><p class="text-sm">暂无报价历史记录</p><p class="text-xs mt-1 text-gray-300">上传模型完成报价后，记录将显示在这里</p></td></tr>';
-                        return;
-                    }
-                    historyTbody.innerHTML = data.items.map(item => {
-                        const ts = item.created_at ? new Date(item.created_at + 'Z').toLocaleString('zh-CN') : '-';
-                        const statusBadge = item.status === 'success'
-                            ? '<span class="text-green-600 font-medium">✓ 成功</span>'
-                            : `<span class="text-red-500 font-medium" title="${escapeHtml(item.error_msg || '')}">✗ 失败</span>`;
-                        return `<tr class="border-t border-gray-100 hover:bg-gray-50">
-                            <td class="px-3 py-2 text-gray-500">${ts}</td>
-                            <td class="px-3 py-2 max-w-[120px] truncate" title="${escapeHtml(item.filename)}">${escapeHtml(item.filename)}</td>
-                            <td class="px-3 py-2">${escapeHtml(item.material)}</td>
-                            <td class="px-3 py-2">${item.quantity}</td>
-                            <td class="px-3 py-2">${item.volume_cm3}</td>
-                            <td class="px-3 py-2">${item.weight_g}</td>
-                            <td class="px-3 py-2">${formatTimeHMS(item.estimated_time_h)}</td>
-                            <td class="px-3 py-2 font-medium text-indigo-600">¥${item.cost_cny}</td>
-                            <td class="px-3 py-2">${statusBadge}</td>
-                        </tr>`;
-                    }).join('');
-                } catch (e) {
-                    historyTbody.innerHTML = '<tr><td class="px-3 py-4 text-gray-400 text-center" colspan="9">加载失败</td></tr>';
-                }
-            }
-
-            if (historyRefreshBtn) {
-                historyRefreshBtn.addEventListener('click', loadQuoteHistory);
-            }
-
-            // Open quote history modal
-            if (openQuoteHistoryBtn) {
-                openQuoteHistoryBtn.addEventListener('click', () => {
-                    document.getElementById('user-dropdown')?.classList.add('hidden');
-                    quoteHistoryModal?.classList.remove('hidden');
-                    loadQuoteHistory();
-                });
-            }
-
-            // Close quote history modal
-            const closeHistoryModal = () => quoteHistoryModal?.classList.add('hidden');
-            if (historyCloseBtn) historyCloseBtn.addEventListener('click', closeHistoryModal);
-            if (quoteHistoryBackdrop) quoteHistoryBackdrop.addEventListener('click', closeHistoryModal);
+            // ── Quote history (delegated to modules/history.js) ──
+            initQuoteHistory();
 
             // Auto-load history after login
             const origLogin = typeof doLogin === 'function' ? doLogin : null;

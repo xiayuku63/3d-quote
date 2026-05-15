@@ -22,11 +22,13 @@ async def lifespan(app: FastAPI):
     """Startup and shutdown lifecycle."""
     # Startup
     from .database import init_db
+    from .db import init_orm
     from .utils import _uploads_base_dir, _outputs_base_dir
 
     pricer_logger = setup_logging()
     pricer_logger.info("event=startup env=%s", APP_ENV)
     init_db()
+    init_orm()
     _uploads_base_dir()
     _outputs_base_dir()
     # Restore rate limit state from DB

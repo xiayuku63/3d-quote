@@ -1,0 +1,13 @@
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "I", "W", "B", "C4"]
+ignore = ["E501", "B008"]
+
+[format]
+quote-style = "double"
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "calculator", "parser"]
