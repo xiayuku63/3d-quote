@@ -724,7 +724,9 @@
             function refreshOptionsSummary() {
                 const colorText = formatColorLabel(quoteOptions.color);
                 if (optionsSummary) {
-                    optionsSummary.textContent = `当前参数：材料 ${quoteOptions.material}，颜色 ${colorText}，数量 ${quoteOptions.quantity}`;
+                    const pm = document.getElementById("main-printer");
+                    const pmName = (pm && pm.selectedOptions[0]) ? pm.selectedOptions[0].text : "未选择";
+                    optionsSummary.textContent = `打印机：${pmName} | 材料 ${quoteOptions.material}，颜色 ${colorText}，数量 ${quoteOptions.quantity}`;
                 }
             }
             function recalcSummaryFromCurrentResults() {
