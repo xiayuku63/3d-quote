@@ -7,3 +7,6 @@ trimesh
 python-jose
 bcrypt
 pillow
+pydantic-settings
+python-docx
+openpyxl
