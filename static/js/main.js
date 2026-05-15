@@ -2299,7 +2299,7 @@
                     if (!resp.ok) return;
                     const data = await resp.json();
                     if (!data.items || data.items.length === 0) {
-                        historyTbody.innerHTML = '<tr><td class="px-3 py-4 text-gray-400 text-center" colspan="9">暂无历史记录</td></tr>';
+                        historyTbody.innerHTML = '<tr><td class="px-3 py-12 text-gray-400 text-center" colspan="9"><div class="text-6xl mb-3">📭</div><p class="text-sm">暂无报价历史记录</p><p class="text-xs mt-1 text-gray-300">上传模型完成报价后，记录将显示在这里</p></td></tr>';
                         return;
                     }
                     historyTbody.innerHTML = data.items.map(item => {

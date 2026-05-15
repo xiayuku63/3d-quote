@@ -21,7 +21,7 @@
                 <div>
                     <div class="uppercase tracking-wide text-sm text-indigo-500 font-semibold mb-1">3D Printing Parts Automated Quoting System</div>
                     <h2 class="text-2xl font-bold text-gray-900 inline">3D打印件自动报价系统</h2>
-                    <span id="app-version" class="ml-2 px-2 py-0.5 text-xs font-mono rounded-full bg-gray-100 text-gray-500 align-middle">v0.2.0</span>
+                    <span id="app-version" class="ml-2 px-2 py-0.5 text-xs font-mono rounded-full bg-gray-100 text-gray-500 align-middle">v0.2.1</span>
                 </div>
                 <div id="auth-area" class="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:justify-end">
                     <button id="open-login-btn" type="button" class="w-full sm:w-auto text-sm px-3 py-1.5 border border-indigo-200 text-indigo-700 rounded-md hover:bg-indigo-50">登录</button>
@@ -31,7 +31,7 @@
                         <div id="user-dropdown" class="hidden absolute right-0 mt-2 w-40 rounded-md border border-gray-200 bg-white shadow-lg z-20">
                             <button id="open-admin-users-btn" type="button" class="hidden w-full text-left text-xs px-3 py-2 hover:bg-gray-50">用户管理</button>
                             <button id="open-user-center-btn" type="button" class="w-full text-left text-xs px-3 py-2 hover:bg-gray-50">用户中心</button>
-                            <button id="open-quote-history-btn" type="button" class="w-full text-left text-xs px-3 py-2 hover:bg-gray-50">📜 报价历史</button>
+                            <button id="open-quote-history-btn" type="button" class="w-full text-left text-xs px-3 py-2 hover:bg-gray-50">报价历史</button>
                             <button id="logout-btn" type="button" class="w-full text-left text-xs px-3 py-2 text-red-600 hover:bg-red-50">退出登录</button>
                         </div>
                     </div>
@@ -580,7 +580,7 @@
                 <div class="relative z-10 h-full w-full flex items-center justify-center p-4">
                     <div class="w-full max-w-5xl bg-white rounded-lg shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
                         <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-                            <h4 class="text-sm font-semibold text-gray-800">📜 报价历史</h4>
+                            <h4 class="text-sm font-semibold text-gray-800">报价历史</h4>
                             <div class="flex items-center gap-2">
                                 <button id="history-refresh-btn" type="button" class="text-xs px-3 py-1.5 border border-gray-300 text-gray-600 rounded-md hover:bg-gray-50">刷新</button>
                                 <button id="history-close-btn" type="button" class="text-gray-500 hover:text-gray-700">关闭</button>
@@ -603,7 +603,11 @@
                                         </tr>
                                     </thead>
                                     <tbody id="history-tbody">
-                                        <tr><td class="px-3 py-4 text-gray-400 text-center" colspan="9">暂无历史记录</td></tr>
+                                        <tr><td class="px-3 py-12 text-gray-400 text-center" colspan="9">
+                                            <div class="text-6xl mb-3">📭</div>
+                                            <p class="text-sm">暂无报价历史记录</p>
+                                            <p class="text-xs mt-1 text-gray-300">上传模型完成报价后，记录将显示在这里</p>
+                                        </td></tr>
                                     </tbody>
                                 </table>
                             </div>
