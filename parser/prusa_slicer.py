@@ -1,25 +1,14 @@
 """
-PrusaSlicer integration module for headless slicing in Docker/Ubuntu.
+PrusaSlicer integration — headless slicing for accurate time & filament estimation.
 
-PrusaSlicer (available via apt: sudo apt install prusa-slicer) is used as the
-backend slicing engine. It runs completely headless (no Xvfb, no display) and
-outputs G-code with embedded filament usage and time estimates.
-
-CLI usage:
-    prusa-slicer \\
-        --load printer.ini --load filament.ini --load print.ini \\
-        --export-gcode --output out.gcode input.stl
-
-G-code output includes:
-    ; filament used [mm] = 428.05
-    ; filament used [cm3] = 1.03
-    ; total filament used [g] = 0.00       (needs filament density configured)
-    ; estimated printing time (normal mode) = 8m 41s
+Uses PrusaSlicer via apt (prusa-slicer CLI) in headless mode.
+Config is loaded from profiles/prusa/print.ini (system default) or user presets.
+Quote parameters (layer_height, infill%, perimeters, density) override config at
+slice time by generating a temporary combined INI file.
 """
 
 import os
 import re
-import json
 import logging
 import tempfile
 import subprocess
@@ -28,191 +17,156 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Executable discovery
-# ---------------------------------------------------------------------------
+# ── Executable discovery ──
 
 def prusa_executable() -> Optional[str]:
-    """Return path to prusa-slicer binary, or None."""
-    # Installed via apt -> /usr/bin/prusa-slicer
-    if shutil.which("prusa-slicer"):
-        return shutil.which("prusa-slicer")
-    # Check common extra paths
-    for p in ["/usr/local/bin/prusa-slicer", "/snap/bin/prusa-slicer"]:
-        if os.path.exists(p):
-            return p
+    """Return path to prusa-slicer binary, or None if not installed."""
+    for candidate in [
+        shutil.which("prusa-slicer"),
+        "/usr/bin/prusa-slicer",
+        "/usr/local/bin/prusa-slicer",
+        "/snap/bin/prusa-slicer",
+    ]:
+        if candidate and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
     return None
 
 
 def prusa_executable_diagnostics() -> dict:
-    """Return diagnostic info about the PrusaSlicer installation."""
-    diag = {
-        "found": False,
-        "path": None,
-        "version": None,
-    }
+    diag = {"found": False, "path": None, "version": None}
     exe = prusa_executable()
     if exe:
         diag["found"] = True
         diag["path"] = exe
         try:
             out = subprocess.check_output([exe, "--help"], stderr=subprocess.STDOUT, timeout=10)
-            first_line = out.decode("utf-8", errors="replace").split("\n")[0]
-            diag["version"] = first_line.strip()
+            diag["version"] = out.decode("utf-8", errors="replace").split("\n")[0].strip()
         except Exception as e:
             diag["version"] = f"error: {e}"
     return diag
 
 
-# ---------------------------------------------------------------------------
-# G-code parsing
-# ---------------------------------------------------------------------------
+# ── G-code parsing ──
 
 def parse_prusa_gcode_stats(gcode_path: str) -> dict:
-    """
-    Parse PrusaSlicer G-code output for filament usage and print time.
-    
-    Returns dict with:
-        - filament_mm: float (total filament length in mm)
-        - filament_cm3: float (filament volume in cm³)
-        - filament_g: float (filament weight in g)  -- 0.00 if density not set
-        - time_s: int (estimated print time in seconds)
-        - time_str: str (human-readable time)
-    """
-    result = {
+    """Parse PrusaSlicer G-code for filament usage and print time."""
+    result: dict = {
         "filament_mm": 0.0,
         "filament_cm3": 0.0,
         "filament_g": 0.0,
         "time_s": 0,
         "time_str": "",
     }
-    
     if not os.path.exists(gcode_path):
         return result
-    
+
     with open(gcode_path, "r", encoding="utf-8", errors="replace") as f:
-        content = f.read()
-    
-    # Parse filament used
-    m_mm = re.search(r"; filament used \[mm\] = ([\d.]+)", content)
-    if m_mm:
-        result["filament_mm"] = float(m_mm.group(1))
-    
-    m_cm3 = re.search(r"; filament used \[cm3\] = ([\d.]+)", content)
-    if m_cm3:
-        result["filament_cm3"] = float(m_cm3.group(1))
-    
-    m_g = re.search(r"; total filament used \[g\] = ([\d.]+)", content)
-    if m_g:
-        result["filament_g"] = float(m_g.group(1))
-    
-    # Parse estimated printing time
-    m_time = re.search(r"; estimated printing time \(normal mode\) = (\d+)m (\d+)s", content)
-    if m_time:
-        minutes = int(m_time.group(1))
-        seconds = int(m_time.group(2))
-        result["time_s"] = minutes * 60 + seconds
-        result["time_str"] = f"{minutes}m {seconds}s"
-    
-    # Also try hours format
-    m_time_h = re.search(r"; estimated printing time \(normal mode\) = (\d+)h (\d+)m (\d+)s", content)
-    if m_time_h:
-        hours = int(m_time_h.group(1))
-        minutes = int(m_time_h.group(2))
-        seconds = int(m_time_h.group(3))
-        result["time_s"] = hours * 3600 + minutes * 60 + seconds
-        result["time_str"] = f"{hours}h {minutes}m {seconds}s"
-    
+        content = f.read(4096 * 64)  # Read first 256KB — stats are always at top
+
+    if m := re.search(r"; filament used \[mm\] = ([\d.]+)", content):
+        result["filament_mm"] = float(m.group(1))
+    if m := re.search(r"; filament used \[cm3\] = ([\d.]+)", content):
+        result["filament_cm3"] = float(m.group(1))
+    if m := re.search(r"; total filament used \[g\] = ([\d.]+)", content):
+        result["filament_g"] = float(m.group(1))
+
+    # Parse time: "estimated printing time (normal mode) = Xh Ym Zs" or "Xm Ys"
+    if m := re.search(r"; estimated printing time \(normal mode\) = (\d+)h (\d+)m (\d+)s", content):
+        result["time_s"] = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3))
+        result["time_str"] = f"{m.group(1)}h {m.group(2)}m {m.group(3)}s"
+    elif m := re.search(r"; estimated printing time \(normal mode\) = (\d+)m (\d+)s", content):
+        result["time_s"] = int(m.group(1)) * 60 + int(m.group(2))
+        result["time_str"] = f"{m.group(1)}m {m.group(2)}s"
+
     return result
 
 
-# ---------------------------------------------------------------------------
-# Config generation
-# ---------------------------------------------------------------------------
+# ── Config generation ──
 
-def generate_prusa_config(
+_SYSTEM_INI_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "profiles", "prusa", "print.ini")
+
+
+def _load_system_ini() -> str:
+    """Load system default INI content."""
+    if not os.path.exists(_SYSTEM_INI_PATH):
+        raise RuntimeError(f"System PrusaSlicer config not found: {_SYSTEM_INI_PATH}")
+    with open(_SYSTEM_INI_PATH, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def _parse_ini_settings(content: str) -> dict[str, str]:
+    """Parse INI content into flat key=value dict (ignoring section headers)."""
+    settings: dict[str, str] = {}
+    for line in content.split("\n"):
+        line = line.strip()
+        if not line or line.startswith(";") or line.startswith("#") or line.startswith("["):
+            continue
+        if "=" in line:
+            k, v = line.split("=", 1)
+            key = k.strip()
+            if key:
+                settings[key] = v.strip()
+    return settings
+
+
+def generate_slice_config(
     layer_height: float = 0.2,
     infill_percent: int = 20,
     perimeters: int = 3,
-    top_shell_layers: int = 5,
-    bottom_shell_layers: int = 5,
     material_density: float = 1.24,
+    slicer_preset: Optional[dict] = None,
 ) -> str:
     """
-    Generate a PrusaSlicer-compatible INI configuration snippet.
-    
-    This creates minimal config overrides to match the quoting parameters.
-    Returns the path to a temporary config file.
+    Generate a combined PrusaSlicer INI config file for a quote request.
+
+    Merges: system defaults → user preset overrides → quote parameters.
+    Returns path to temporary INI file.
     """
-    # Create a temporary INI file
-    fd, path = tempfile.mkstemp(suffix=".ini", prefix="prusa_")
+    # Load system default settings
+    try:
+        ini_content = _load_system_ini()
+    except Exception:
+        # Fallback: generate minimal config
+        ini_content = ""
+
+    settings = _parse_ini_settings(ini_content)
+
+    # Apply user preset overrides (if provided and is valid INI content)
+    if slicer_preset and isinstance(slicer_preset, dict) and slicer_preset.get("content"):
+        raw = slicer_preset["content"]
+        if isinstance(raw, str):
+            raw = raw.encode("utf-8")
+        first_byte = raw[:1] if raw else b""
+        if first_byte not in (b"{", b"[") and b"=" in raw:
+            preset_settings = _parse_ini_settings(raw.decode("utf-8", errors="replace"))
+            settings.update(preset_settings)
+
+    # Apply quote parameter overrides (these always win)
+    settings["layer_height"] = str(layer_height)
+    settings["first_layer_height"] = str(round(min(layer_height * 1.75, 0.35), 2))
+    settings["fill_density"] = f"{infill_percent}%"
+    settings["perimeters"] = str(perimeters)
+    settings["wall_loops"] = str(perimeters)
+    settings["top_shell_layers"] = str(max(3, min(perimeters + 2, 10)))
+    settings["bottom_shell_layers"] = str(max(3, min(perimeters + 2, 10)))
+    settings["filament_density"] = str(material_density)
+
+    # Write temp config file
+    fd, path = tempfile.mkstemp(suffix=".ini", prefix="prc3d_")
     with os.fdopen(fd, "w") as f:
-        f.write("""# Generated by prusa_slicer.py for 3D Printing Quoting System
-# Print settings
-layer_height = {layer_height}
-fill_density = {infill}%
-perimeters = {perimeters}
-top_shell_layers = {top}
-bottom_shell_layers = {bottom}
+        f.write("; Generated by pricer3d — combined slice config\n")
+        f.write(f"; layer_height={layer_height} infill={infill_percent}% perimeters={perimeters} density={material_density}\n\n")
+        for key in sorted(settings):
+            f.write(f"{key} = {settings[key]}\n")
 
-# Printer settings (Bambu Lab A1 0.4mm equivalent)
-bed_shape = 256x256
-bed_size = 256,256
-print_center = 128,128
-z_offset = 0
-nozzle_diameter = 0.4
-max_print_z = 256
-
-# Acceleration (Bambu A1: 12,000 mm/s²)
-default_acceleration = 10000
-perimeter_acceleration = 8000
-infill_acceleration = 12000
-bridge_acceleration = 3000
-first_layer_acceleration = 2000
-
-# Speed settings (Bambu A1 equivalents)
-outer_perimeter_speed = 200
-inner_perimeter_speed = 300
-small_perimeter_speed = 150
-solid_infill_speed = 250
-top_solid_infill_speed = 200
-support_material_speed = 200
-travel_speed = 500
-first_layer_speed = 50
-max_volumetric_speed = 12
-
-# Filament settings (Bambu PLA Basic)
-filament_diameter = 1.75
-filament_density = {density}
-extrusion_multiplier = 0.98
-temperature = 220
-first_layer_temperature = 220
-bed_temperature = 55
-first_layer_bed_temperature = 55
-
-# Cooling
-enable_fan = 1
-fan_always_on = 1
-fan_below_layer_time = 30
-slowdown_below_layer_time = 10
-min_print_speed = 25
-
-# Quality
-resolution = 0.0125
-""".format(
-            layer_height=layer_height,
-            infill=infill_percent,
-            perimeters=perimeters,
-            top=top_shell_layers,
-            bottom=bottom_shell_layers,
-            density=material_density,
-        ))
+    logger.info(f"PrusaSlicer config: {len(settings)} settings → {path}")
     return path
 
 
-# ---------------------------------------------------------------------------
-# Slice
-# ---------------------------------------------------------------------------
+# ── Slice ──
+
+_SLICE_TIMEOUT = int(os.getenv("PRUSA_SLICE_TIMEOUT", "120"))
+
 
 def run_prusa_slice(
     model_path: str,
@@ -222,198 +176,77 @@ def run_prusa_slice(
     perimeters: int = 3,
     material_density: float = 1.24,
     slicer_preset: Optional[dict] = None,
+    enable_supports: bool = False,
 ) -> dict:
     """
-    Run PrusaSlicer headless to slice an STL file.
-    
-    Args:
-        model_path: Path to input STL file
-        output_gcode_path: Path for output G-code
-        layer_height: Layer height in mm (default 0.2)
-        infill_percent: Infill percentage (default 20)
-        perimeters: Number of wall perimeters (default 3)
-        material_density: Filament density in g/cm3 (default 1.24 for PLA)
-    
-    Returns:
-        Dict with keys from parse_prusa_gcode_stats() plus "error" on failure
-    
-    Raises:
-        RuntimeError on fatal errors (missing executable, etc.)
+    Run PrusaSlicer headless. Merges system/user/quote config into temp INI.
+
+    Returns dict from parse_prusa_gcode_stats() plus:
+      - preset_used: str (config source description)
+      - error: str (only on failure)
     """
     exe = prusa_executable()
     if not exe:
-        raise RuntimeError(
-            "PrusaSlicer not found. Install with: apt-get install prusa-slicer"
-        )
-    
-    # Ensure output directory exists
+        raise RuntimeError("PrusaSlicer not found — install: apt-get install prusa-slicer")
+
     out_dir = os.path.dirname(output_gcode_path)
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
-    
-    # ── Determine config source ──
-    # Priority: user preset > system default (profiles/prusa/print.ini)
-    _used_preset = None
-    _config_content = None
-    
-    if slicer_preset and isinstance(slicer_preset, dict) and slicer_preset.get("content"):
-        raw_content = slicer_preset["content"]
-        if isinstance(raw_content, str):
-            raw_content = raw_content.encode("utf-8")
-        first_non_ws = raw_content.lstrip()[:1]
-        if first_non_ws not in (b"{", b"["):
-            _config_content = raw_content
-            _used_preset = slicer_preset.get('name', 'unknown')
-            logger.info(f"Using user preset: {_used_preset}")
-    
-    if _config_content is None:
-        import os as _os2
-        _sys_path = _os2.path.join(_os2.path.dirname(_os2.path.dirname(__file__)), "profiles", "prusa", "print.ini")
-        if _os2.path.exists(_sys_path):
-            with open(_sys_path, "rb") as _f:
-                _config_content = _f.read()
-            _used_preset = "系统默认 (A1)"
-            logger.info(f"Using system default preset: {_sys_path}")
-    
-    if _config_content is None:
-        raise RuntimeError("没有可用的 PrusaSlicer 配置 (找不到系统预设)")
-    
-    # Parse INI content to extract key=value pairs for CLI args
-    _ini_lines = _config_content.decode("utf-8").split("\n")
-    _ini_settings = {}
-    for _line in _ini_lines:
-        _line = _line.strip()
-        if not _line or _line.startswith(";") or _line.startswith("#"):
-            continue
-        if "=" in _line:
-            _k, _v = _line.split("=", 1)
-            _ini_settings[_k.strip()] = _v.strip()
-    
-    # Map INI keys to CLI flags, add defaults for missing keys
-    _INI_TO_CLI = {
-        "perimeter_speed": "--perimeter-speed",
-        "external_perimeter_speed": "--external-perimeter-speed",
-        "infill_speed": "--infill-speed",
-        "solid_infill_speed": "--solid-infill-speed",
-        "top_solid_infill_speed": "--top-solid-infill-speed",
-        "gap_fill_speed": "--gap-fill-speed",
-        "bridge_speed": "--bridge-speed",
-        "travel_speed": "--travel-speed",
-        "first_layer_speed": "--first-layer-speed",
-        "default_acceleration": "--default-acceleration",
-        "perimeter_acceleration": "--perimeter-acceleration",
-        "infill_acceleration": "--infill-acceleration",
-        "external_perimeter_acceleration": "--external-perimeter-acceleration",
-        "bridge_acceleration": "--bridge-acceleration",
-        "first_layer_acceleration": "--first-layer-acceleration",
-        "travel_acceleration": "--travel-acceleration",
-        "machine_max_acceleration_x": "--machine-max-acceleration-x",
-        "machine_max_acceleration_y": "--machine-max-acceleration-y",
-        "machine_max_acceleration_z": "--machine-max-acceleration-z",
-        "machine_max_acceleration_e": "--machine-max-acceleration-e",
-        "machine_max_acceleration_extruding": "--machine-max-acceleration-extruding",
-        "machine_max_acceleration_travel": "--machine-max-acceleration-travel",
-        "machine_max_feedrate_x": "--machine-max-feedrate-x",
-        "machine_max_feedrate_y": "--machine-max-feedrate-y",
-        "machine_max_feedrate_z": "--machine-max-feedrate-z",
-        "machine_max_feedrate_e": "--machine-max-feedrate-e",
-        "machine_max_jerk_x": "--machine-max-jerk-x",
-        "machine_max_jerk_y": "--machine-max-jerk-y",
-        "machine_max_jerk_z": "--machine-max-jerk-z",
-        "machine_max_jerk_e": "--machine-max-jerk-e",
-        "retract_length": "--retract-length",
-        "retract_speed": "--retract-speed",
-        "deretract_speed": "--deretract-speed",
-        "retract_before_travel": "--retract-before-travel",
-        "retract_lift": "--retract-lift",
-        "max_volumetric_speed": "--max-volumetric-speed",
-        "max_fan_speed": "--max-fan-speed",
-        "min_fan_speed": "--min-fan-speed",
-        "bridge_fan_speed": "--bridge-fan-speed",
-        "disable_fan_first_layers": "--disable-fan-first-layers",
-        "full_fan_speed_layer": "--full-fan-speed-layer",
-        "fan_below_layer_time": "--fan-below-layer-time",
-        "slowdown_below_layer_time": "--slowdown-below-layer-time",
-        "min_print_speed": "--min-print-speed",
-        "fill_pattern": "--fill-pattern",
-        "top_solid_layers": "--top-solid-layers",
-        "bottom_solid_layers": "--bottom-solid-layers",
-        "skirts": "--skirts",
-        "brim_width": "--brim-width",
-        "bed_shape": "--bed-shape",
-        "max_print_height": "--max-print-height",
-    }
-    
-    # Build CLI args from INI settings
-    settings_list = [
-        # Quote params (always override from quoting request)
-        "--fill-density", f"{infill_percent}%",
-        "--perimeters", str(perimeters),
-        "--layer-height", str(layer_height),
-        "--first-layer-height", str(min(layer_height * 1.75, 0.35)),
-    ]
-    
-    # Add settings from INI preset
-    for ini_key, cli_flag in _INI_TO_CLI.items():
-        val = _ini_settings.get(ini_key)
-        if val is not None:
-            settings_list.extend([cli_flag, val])
-    
-    # Boolean flags (no value arg)
-    if _ini_settings.get("cooling", "1") == "1":
-        settings_list.append("--cooling")
-    if _ini_settings.get("fan_always_on", "1") == "1":
-        settings_list.append("--fan-always-on")
-    if _ini_settings.get("support_material", "0") == "1":
-        settings_list.append("--support-material")
-    
-    cmd = [exe] + settings_list + [
+
+    config_path = generate_slice_config(
+        layer_height=layer_height,
+        infill_percent=infill_percent,
+        perimeters=perimeters,
+        material_density=material_density,
+        slicer_preset=slicer_preset,
+    )
+
+    preset_label = "系统默认 (A1)"
+    if slicer_preset and slicer_preset.get("name"):
+        preset_label = str(slicer_preset["name"])
+
+    cmd = [
+        exe,
+        "--ignore-nonexistent-config",
+        "--load", config_path,
         "--export-gcode",
         "--output", output_gcode_path,
-        model_path,
     ]
-    
-    logger.info(f"PrusaSlicer config: {_used_preset} ({len(_ini_settings)} settings)")
-    
-    logger.info(f"PrusaSlicer command: {' '.join(cmd)}")
-    
+    if enable_supports:
+        cmd.append("--support-material")
+    cmd.append(model_path)
+
+    logger.info(f"PrusaSlicer: preset={preset_label} model={os.path.basename(model_path)}")
+
     try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=_SLICE_TIMEOUT)
         stdout = (proc.stdout or "").strip()
         stderr = (proc.stderr or "").strip()
-        
+
         if proc.returncode != 0 and not os.path.exists(output_gcode_path):
-            error_msg = stderr or stdout or f"PrusaSlicer exited with code {proc.returncode}"
-            raise RuntimeError(f"PrusaSlicer slicing failed: {error_msg}")
-        
-        logger.info(f"PrusaSlicer stdout: {stdout[:200]}")
+            error_msg = stderr or stdout or f"exit code {proc.returncode}"
+            raise RuntimeError(f"PrusaSlicer failed: {error_msg[:200]}")
+
         if stderr:
-            logger.warning(f"PrusaSlicer stderr: {stderr[:200]}")
-        
-        # Parse the G-code output
+            logger.debug(f"PrusaSlicer stderr: {stderr[:200]}")
+
         stats = parse_prusa_gcode_stats(output_gcode_path)
-        logger.info(f"PrusaSlicer result: filament_cm3={stats['filament_cm3']}, time_s={stats['time_s']}")
-        
+        stats["preset_used"] = preset_label
+        logger.info(f"PrusaSlicer result: cm³={stats['filament_cm3']} g={stats['filament_g']} time={stats['time_str']}")
         return stats
-        
+
     except subprocess.TimeoutExpired:
-        raise RuntimeError("PrusaSlicer timed out (120s limit)")
+        raise RuntimeError(f"PrusaSlicer timed out ({_SLICE_TIMEOUT}s)")
     except RuntimeError:
         raise
     except Exception as e:
-        raise RuntimeError(f"PrusaSlicer execution failed: {e}")
+        raise RuntimeError(f"PrusaSlicer error: {e}")
     finally:
-        # Clean up temp preset file
+        # Cleanup temp config
         try:
             if os.path.exists(config_path):
-                os.remove(config_path)
-        except Exception:
+                os.unlink(config_path)
+        except OSError:
             pass
 
 
@@ -425,51 +258,118 @@ def prusa_support_diff_stats(
     output_dir: Optional[str] = None,
     output_prefix: Optional[str] = None,
 ) -> dict:
-    """
-    Estimate support material usage by slicing with and without supports.
-    
-    Returns dict with:
-        - support_g: weight of support material
-        - estimated_time_s: print time WITH supports
-        - filament_g: total filament WITH supports
-        - no_support_time_s: print time WITHOUT supports
-        - no_support_filament_g: filament WITHOUT supports
-    """
-    result = {
+    """Slice with & without supports; return support material diff."""
+    result: dict = {
         "support_g": 0.0,
         "estimated_time_s": None,
         "filament_g": None,
         "no_support_time_s": None,
         "no_support_filament_g": None,
     }
-    
     if not os.path.exists(model_path):
         return result
-    
+
     out_dir = output_dir or tempfile.mkdtemp()
     prefix = output_prefix or "prusa_support"
-    
+
+    def _slice_and_get_g(supports: bool) -> float:
+        gcode = os.path.join(out_dir, f"{prefix}_{'with' if supports else 'no'}_support.gcode")
+        stats = run_prusa_slice(model_path, gcode,
+                                layer_height=layer_height, infill_percent=infill_percent,
+                                perimeters=perimeters, enable_supports=supports)
+        g = float(stats.get("filament_g") or 0)
+        if g <= 0 and float(stats.get("filament_cm3") or 0) > 0:
+            g = float(stats["filament_cm3"]) * 1.24
+        return g
+
     try:
-        # Slice without supports first to get baseline
-        baseline_gcode = os.path.join(out_dir, f"{prefix}_baseline.gcode")
-        baseline_stats = run_prusa_slice(
-            model_path, baseline_gcode,
-            layer_height=layer_height,
-            infill_percent=infill_percent,
-            perimeters=perimeters,
-        )
-        result["no_support_time_s"] = baseline_stats.get("time_s", 0)
-        result["no_support_filament_g"] = baseline_stats.get("filament_g", 0.0)
-        
-        # Slice with supports to get the estimate
-        # For now, we fall back to the simple estimation since we don't know
-        # the actual support settings - PrusaSlicer auto-detects supports
-        # based on geometry. We'll use the baseline results as the primary estimate.
-        result["estimated_time_s"] = baseline_stats.get("time_s", 0)
-        result["filament_g"] = baseline_stats.get("filament_g", 0.0)
-        result["support_g"] = 0.0  # Will be refined when support slicing is implemented
-        
+        result["no_support_filament_g"] = _slice_and_get_g(False)
+        result["filament_g"] = _slice_and_get_g(True)
+        result["support_g"] = round(max(0.0, float(result["filament_g"]) - float(result["no_support_filament_g"])), 3)
     except Exception as e:
         logger.error(f"PrusaSlicer support diff failed: {e}")
-    
+
     return result
+
+
+# ── Config generation for user presets ──
+
+def generate_prusa_config(
+    layer_height: float = 0.2,
+    infill_percent: int = 20,
+    perimeters: int = 3,
+    top_shell_layers: int = 5,
+    bottom_shell_layers: int = 5,
+    material_density: float = 1.24,
+) -> str:
+    """
+    Generate a PrusaSlicer-compatible INI config snippet.
+    Uses system default as base, overrides with given params.
+    Returns path to temporary config file.
+    """
+    fd, path = tempfile.mkstemp(suffix=".ini", prefix="prusa_gen_")
+    with os.fdopen(fd, "w") as f:
+        f.write(f"""; Generated PrusaSlicer config — pricer3d
+layer_height = {layer_height}
+first_layer_height = {round(min(layer_height * 1.75, 0.35), 2)}
+fill_density = {infill_percent}%
+perimeters = {perimeters}
+top_shell_layers = {top_shell_layers}
+bottom_shell_layers = {bottom_shell_layers}
+nozzle_diameter = 0.4
+filament_diameter = 1.75
+filament_density = {material_density}
+filament_type = PLA
+temperature = 220
+first_layer_temperature = 220
+bed_temperature = 55
+first_layer_bed_temperature = 55
+perimeter_speed = 250
+external_perimeter_speed = 200
+infill_speed = 250
+solid_infill_speed = 250
+top_solid_infill_speed = 200
+travel_speed = 500
+first_layer_speed = 45
+default_acceleration = 6000
+perimeter_acceleration = 5000
+infill_acceleration = 10000
+external_perimeter_acceleration = 4000
+bridge_acceleration = 5000
+first_layer_acceleration = 2000
+travel_acceleration = 10000
+machine_max_acceleration_x = 12000
+machine_max_acceleration_y = 12000
+machine_max_acceleration_z = 1500
+machine_max_acceleration_e = 5000
+machine_max_acceleration_extruding = 12000
+machine_max_feedrate_x = 500
+machine_max_feedrate_y = 500
+machine_max_feedrate_z = 30
+machine_max_feedrate_e = 30
+machine_max_jerk_x = 9
+machine_max_jerk_y = 9
+machine_max_jerk_z = 3
+machine_max_jerk_e = 3
+retract_length = 0.8
+retract_speed = 30
+deretract_speed = 30
+retract_before_travel = 1.5
+retract_lift = 0.4
+max_volumetric_speed = 0
+cooling = 1
+fan_always_on = 1
+max_fan_speed = 100
+min_fan_speed = 35
+bridge_fan_speed = 100
+disable_fan_first_layers = 1
+fan_below_layer_time = 60
+slowdown_below_layer_time = 10
+min_print_speed = 25
+resolution = 0.0125
+extrusion_multiplier = 0.98
+bed_shape = 0x0,256x0,256x256,0x256
+min_layer_height = 0.08
+max_layer_height = 0.32
+""")
+    return path

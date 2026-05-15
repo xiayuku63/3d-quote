@@ -402,11 +402,11 @@ def bambu_support_diff_stats(
     base_dir = str(output_dir or "").strip()
     if not base_dir:
         import uuid
-        from main import _outputs_base_dir, _date_folder_utc
+        from app.utils import _outputs_base_dir, _date_folder_utc
         base_dir = os.path.join(_outputs_base_dir(), _date_folder_utc(), uuid.uuid4().hex)
     os.makedirs(base_dir, exist_ok=True)
 
-    from main import _sanitize_filename_component
+    from app.utils import _sanitize_filename_component
     prefix = _sanitize_filename_component(output_prefix, fallback="", max_len=50)
     if prefix and not prefix.endswith("_"):
         prefix = prefix + "_"

@@ -21,7 +21,7 @@ def calculate_weight(volume, material_density):
     return volume * material_density / 1000  # mm³ -> cm³ -> g
 
 def merge_pricing_config(raw_config):
-    from main import DEFAULT_PRICING_CONFIG
+    from app.config import DEFAULT_PRICING_CONFIG
     if not raw_config:
         return dict(DEFAULT_PRICING_CONFIG)
     merged = dict(DEFAULT_PRICING_CONFIG)
@@ -241,7 +241,8 @@ def calculate_cost(
     perimeters: Optional[int] = None,
     current_user: Optional[dict] = None,
 ):
-    from main import normalize_materials, DEFAULT_MATERIALS, _sanitize_filename_component, _user_base_dir, _date_folder_utc
+    from app.utils import normalize_materials, _sanitize_filename_component, _user_base_dir, _date_folder_utc
+    from app.config import DEFAULT_MATERIALS
     materials = normalize_materials(user_materials)
     spec = next((m for m in materials if m["name"] == material), None) or DEFAULT_MATERIALS[0]
     cfg = merge_pricing_config(pricing_config)
@@ -302,12 +303,14 @@ def calculate_cost(
     slicer_filament_g_per_part = None
     preset_used = None
     bambu_error_msg = None
+    prusaslicer_used = False
     support_weight_g_per_part = 0.0
 
     # ---- PrusaSlicer (preferred: no display needed) ----
     if use_prusaslicer and model_path and os.path.exists(model_path):
         try:
             logger.info(f"PrusaSlicer enabled, slicing: {model_path}")
+            prusaslicer_used = True
             base_name = os.path.splitext(os.path.basename(model_path))[0]
             output_prefix = _sanitize_filename_component(base_name, fallback="model", max_len=60)
             user_folder = f"user_{current_user['id']}_{current_user['username']}" if current_user else "anonymous"
@@ -337,6 +340,9 @@ def calculate_cost(
                     # Calculate weight from volume if density wasn't set
                     filament_cm3 = float(st["filament_cm3"])
                     slicer_filament_g_per_part = filament_cm3 * spec["density"]
+                # Capture preset info from PrusaSlicer result
+                if not preset_used and st.get("preset_used"):
+                    preset_used = str(st["preset_used"])
             else:
                 stats = run_prusa_slice(
                     model_path, output_gcode,
@@ -358,6 +364,8 @@ def calculate_cost(
                 elif stats.get("filament_cm3", 0) > 0:
                     filament_cm3 = stats["filament_cm3"]
                     slicer_filament_g_per_part = filament_cm3 * spec["density"]
+                if not preset_used and stats.get("preset_used"):
+                    preset_used = str(stats["preset_used"])
         except Exception as e:
             logger.error(f"PrusaSlicer failed for {model_path}: {e}")
             slicer_time_s = None
@@ -508,12 +516,18 @@ def calculate_cost(
         "support_price_per_g": round(support_price_per_g, 4),
         "support_cost_per_part_cny": round(support_cost_per_part_cny, 2),
         "bambu_used": bool(use_bambu and slicer_time_s is not None),
+        "prusaslicer_used": bool(prusaslicer_used and slicer_time_s is not None),
+        "slicer_used": "prusaslicer" if (prusaslicer_used and slicer_time_s is not None) else ("bambu" if (use_bambu and slicer_time_s is not None) else None),
         "bambu_error": bambu_error_msg,
         "bambu_filament_g_per_part": round(float(slicer_filament_g_per_part), 3) if slicer_filament_g_per_part is not None else None,
+        "slicer_filament_g_per_part": round(float(slicer_filament_g_per_part), 3) if slicer_filament_g_per_part is not None else None,
         "bambu_preset_used": preset_used,
+        "slicer_preset_used": preset_used,
         "bambu_sets": _bambu_sets_from_quote_params(layer_height_mm, infill_percent, perimeters) if use_bambu else {},
         "bambu_estimated_time_s": int(slicer_time_s) if slicer_time_s is not None else None,
+        "slicer_estimated_time_s": int(slicer_time_s) if slicer_time_s is not None else None,
         "bambu_time_correction": float(cfg.get("prusa_time_correction") or 1.0),
+        "prusa_time_correction": float(cfg.get("prusa_time_correction") or 1.0),
         "setup_fee_cny": round(setup_fee, 2),
         "min_job_fee_cny": round(min_job_fee, 2),
         "subtotal_cny": round(subtotal, 2),
@@ -537,7 +551,8 @@ async def process_single_file(
     perimeters: Optional[int] = None,
     current_user: Optional[dict] = None,
 ):
-    from main import SUPPORTED_EXTENSIONS, MAX_FILE_SIZE_BYTES, _sanitize_filename_component, _user_base_dir, _date_folder_utc
+    from app.config import SUPPORTED_EXTENSIONS, MAX_FILE_SIZE_BYTES
+    from app.utils import _sanitize_filename_component, _user_base_dir, _date_folder_utc
     from parser.geometry import calculate_geometry
 
     filename = file.filename or "unnamed_file"
@@ -599,7 +614,7 @@ async def process_single_file(
         try:
             filament_g = None
             if isinstance(breakdown, dict):
-                filament_g = breakdown.get("bambu_filament_g_per_part")
+                filament_g = breakdown.get("slicer_filament_g_per_part") or breakdown.get("bambu_filament_g_per_part")
             if filament_g is not None:
                 total_weight = round(float(filament_g) * quantity, 2)
         except Exception:

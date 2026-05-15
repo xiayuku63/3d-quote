@@ -1,0 +1,60 @@
+2026-05-15 00:56:57 | INFO  | event=startup env=development
+2026-05-15 00:56:59 | INFO  | ip=127.0.0.1 method=GET path=/healthz status=200 duration_ms=1.37 rid=a539fa5b2c8a4380ab685fe2ed54e0c1
+2026-05-15 00:56:59 | INFO  | ip=127.0.0.1 method=GET path=/readyz status=200 duration_ms=1.59 rid=b7ba284431474e25b5d93b6a911037d7
+2026-05-15 00:59:55 | INFO  | event=shutdown
+2026-05-15 00:59:56 | INFO  | event=startup env=development
+2026-05-15 00:59:58 | INFO  | ip=127.0.0.1 method=GET path=/ status=200 duration_ms=0.92 rid=952626797b45451486afe9908d8a3ef2
+2026-05-15 00:59:58 | INFO  | ip=127.0.0.1 method=GET path=/register status=200 duration_ms=0.45 rid=6f441e476df249249fe2fdbb0141e97c
+2026-05-15 00:59:58 | INFO  | ip=127.0.0.1 method=GET path=/admin/users status=200 duration_ms=0.40 rid=cc1058b38b8f4b6fa324b912168c73a1
+2026-05-15 01:01:17 | INFO  | ip=127.0.0.1 method=GET path=/ status=200 duration_ms=0.59 rid=309bb3f6e10d459c8cf7db13e07f5cfe
+2026-05-15 01:01:17 | INFO  | ip=127.0.0.1 method=GET path=/static/js/main.js status=200 duration_ms=10.37 rid=d49af513e2f04edabf2b9ae3cfc3218e
+2026-05-15 01:01:17 | INFO  | ip=127.0.0.1 method=GET path=/api/auth/me status=200 duration_ms=1.78 rid=1506be8e51c34d4890e14bb17293e8ab
+2026-05-15 01:01:17 | INFO  | ip=127.0.0.1 method=GET path=/api/user/settings status=200 duration_ms=2.65 rid=d6b3a809f12843858404b8c85843478a
+2026-05-15 01:01:18 | INFO  | ip=127.0.0.1 method=GET path=/api/slicer/presets status=200 duration_ms=1.85 rid=1d8a4b0292b54bc88f3b0c929c75f2f6
+2026-05-15 01:03:27 | INFO  | event=shutdown
+2026-05-15 01:03:28 | INFO  | event=startup env=development
+2026-05-15 01:03:30 | INFO  | ip=127.0.0.1 method=GET path=/healthz status=200 duration_ms=1.45 rid=e544e80172a947159f6bcafe751751c3
+2026-05-15 01:03:30 | INFO  | ip=127.0.0.1 method=GET path=/static/js/main.js status=200 duration_ms=2.43 rid=b6fe018b1ab84184ab773507d662c8a0
+2026-05-15 01:03:30 | INFO  | ip=127.0.0.1 method=GET path=/static/js/register.js status=200 duration_ms=0.73 rid=9c690c2dc9ee4cbab8195263332991b6
+2026-05-15 01:03:44 | INFO  | ip=127.0.0.1 method=GET path=/ status=200 duration_ms=1.03 rid=2a082104ec114756944a130df445b8ab
+2026-05-15 01:03:44 | INFO  | ip=127.0.0.1 method=GET path=/static/js/main.js status=200 duration_ms=0.70 rid=7ba45f81c3384c8dbffa2d41c394c25c
+2026-05-15 01:03:45 | INFO  | ip=127.0.0.1 method=GET path=/api/auth/me status=200 duration_ms=1.83 rid=6b0b5a656f184df59cead68990420bf7
+2026-05-15 01:03:45 | INFO  | ip=127.0.0.1 method=GET path=/api/user/settings status=200 duration_ms=3.03 rid=3cdcfafc079c4d178c7b28c83a8ee2b5
+2026-05-15 01:03:47 | INFO  | ip=127.0.0.1 method=GET path=/ status=200 duration_ms=0.59 rid=6c9e746fa46642c0ae4aa7ac02dc3076
+2026-05-15 01:03:47 | INFO  | ip=127.0.0.1 method=GET path=/api/auth/me status=200 duration_ms=1.42 rid=f168a45ef6794ad487588dc8abcfee93
+2026-05-15 01:03:47 | INFO  | ip=127.0.0.1 method=GET path=/api/user/settings status=200 duration_ms=1.58 rid=329639b45abc4dfda23f6c0b46958e52
+2026-05-15 01:06:21 | INFO  | event=shutdown
+2026-05-15 01:15:28 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.84 rid=816cb306db2e486dafa1475f1284290f
+2026-05-15 01:15:28 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.74 rid=64dfc52c200d435dad029d6b5f193e8b
+2026-05-15 01:15:28 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.75 rid=a682a8fde59b494c82de2f41617601c7
+2026-05-15 01:15:28 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.73 rid=a30fcf16c9d44f91b5afcecb6f16e684
+2026-05-15 01:15:28 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.56 rid=1fe4cc1aa0e8442a9f285b20205c10e5
+2026-05-15 01:16:54 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.92 rid=fed3ec80d2214094b3098995c72ae952
+2026-05-15 01:16:54 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.58 rid=ed31ef1259f84990bab867e2989c849b
+2026-05-15 01:16:54 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.56 rid=6895a9b13781498f858e284914f68655
+2026-05-15 01:16:54 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.57 rid=f9678c9e8e9647d394d28b26ab1b49ce
+2026-05-15 01:16:54 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.54 rid=3d48cc0d842a43ca9a7beeefc6085e8f
+2026-05-15 01:19:43 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.70 rid=837d582a2b09400792ac28caaca5e055
+2026-05-15 01:19:43 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.60 rid=b9925ceac7cb49689e01315775e7e562
+2026-05-15 01:19:43 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.64 rid=16a2d66ea25a4e3b8936ea96cc52f142
+2026-05-15 01:19:43 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.58 rid=9f371ae901c947f0a485f3db898e01c2
+2026-05-15 01:19:43 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.97 rid=1166018c4c62407381e4af53d16717c6
+2026-05-15 01:24:08 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.87 rid=2d5eff9bd2fc4b6da47da077e0f1ef49
+2026-05-15 01:24:08 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.72 rid=f3864b40534d4d09b6b426fac83f8146
+2026-05-15 01:24:08 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.86 rid=09e2b1ab4d4e471db27fecb144dfc661
+2026-05-15 01:24:08 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.69 rid=072df128c2054b64addba638e0447c51
+2026-05-15 01:24:08 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.64 rid=0cde88b4dd84441f82b1a3611ab57d02
+2026-05-15 01:24:50 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.83 rid=df021eac24d24627acca6160595c281c
+2026-05-15 01:24:50 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.63 rid=3a098bca986e4656b5526d7053090030
+2026-05-15 01:24:50 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.54 rid=d552199088ad48eeaa30a509758be60d
+2026-05-15 01:24:50 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.45 rid=2ec2b6430dea437d809cefa85324b492
+2026-05-15 01:24:50 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.48 rid=799c620497ee4d0fa6dbb2da8fb8c611
+2026-05-15 01:24:50 | INFO  | ip=testclient method=POST path=/api/auth/password/reset/request status=422 duration_ms=0.66 rid=8690805e561940bd80dc4b547c3d21e0
+2026-05-15 01:24:50 | INFO  | ip=testclient method=POST path=/api/auth/password/reset/confirm status=400 duration_ms=1.00 rid=e2669ef792c14aeebb457860a135a0ab
+2026-05-15 01:44:04 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.94 rid=5c1ed8a9dc5a442286a6d29e42f2bdb2
+2026-05-15 01:44:04 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.63 rid=40945f117d0d4320bb2fbc564849fbe4
+2026-05-15 01:44:04 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.92 rid=b6e5963b04304041a0e8065345ca96b9
+2026-05-15 01:44:04 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.63 rid=dfa97e672b904aa39b45fd0184e2930e
+2026-05-15 01:44:04 | INFO  | ip=testclient method=GET path=/healthz status=200 duration_ms=0.78 rid=6882a2e3920142ea9a188590d9bd7d70
+2026-05-15 01:44:04 | INFO  | ip=testclient method=POST path=/api/auth/password/reset/request status=422 duration_ms=0.63 rid=b2aaf0d79a374f5aad25a12b83bf66ed
+2026-05-15 01:44:04 | INFO  | ip=testclient method=POST path=/api/auth/password/reset/confirm status=400 duration_ms=1.06 rid=dc2ad342bb12459b8bbd77b76b33bda2

@@ -1,6 +1,8 @@
 FROM ubuntu:24.04
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Use Aliyun mirrors for faster builds in China
+RUN sed -i 's|http://archive.ubuntu.com|http://mirrors.aliyun.com|g; s|http://security.ubuntu.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list.d/ubuntu.sources && \
+    apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-venv python3-pip \
     ca-certificates \
     xvfb libfuse2t64 \
@@ -8,12 +10,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# PrusaSlicer for headless slicing (replaces Bambu Studio which requires Wayland)
+# PrusaSlicer
 RUN apt-get update && apt-get install -y --no-install-recommends prusa-slicer \
     && rm -rf /var/lib/apt/lists/*
 
-# Bambu Studio AppImage (optional - replaces Bambu Studio which requires Wayland)
-# Copy a dummy file first; real deployment should provide the actual AppImage
+# Bambu Studio AppImage (optional)
 COPY bambu.AppImage /tmp/
 RUN if [ "$(stat -c%s /tmp/bambu.AppImage 2>/dev/null || echo 0)" -gt 10000000 ]; then \
         echo "Installing Bambu Studio from AppImage..."; \
@@ -23,12 +24,11 @@ RUN if [ "$(stat -c%s /tmp/bambu.AppImage 2>/dev/null || echo 0)" -gt 10000000 ]
         cp -r /tmp/squashfs-root/* /opt/bambu-studio/ && \
         rm -rf /tmp/squashfs-root /tmp/bambu.AppImage; \
     else \
-        echo "bambu.AppImage not found, skipping Bambu Studio (will use PrusaSlicer only)"; \
+        echo "bambu.AppImage too small or missing, Bambu Studio will be unavailable"; \
         echo '#!/bin/sh\necho bambu-studio not available; exit 1' > /usr/local/bin/bambu-studio; \
         chmod +x /usr/local/bin/bambu-studio; \
     fi
 
-# Verify and symlink bambu-studio if installed
 RUN if [ -d /opt/bambu-studio ]; then \
         BIN=$(find /opt/bambu-studio -name "bambu-studio" -type f | head -1); \
         [ -n "$BIN" ] && chmod +x "$BIN" && ln -sf "$BIN" /usr/local/bin/bambu-studio; \
@@ -36,12 +36,17 @@ RUN if [ -d /opt/bambu-studio ]; then \
 
 WORKDIR /app
 COPY requirements.txt .
+
+# Use Tsinghua PyPI mirror for faster installs in China
 RUN python3 -m venv /app/venv && \
-    /app/venv/bin/pip install --no-cache-dir -r requirements.txt
+    /app/venv/bin/pip install --no-cache-dir \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple \
+    --trusted-host pypi.tuna.tsinghua.edu.cn \
+    -r requirements.txt
 
 COPY . .
 
-RUN mkdir -p /app/data/uploads /app/data/outputs /app/data/user
+RUN mkdir -p /app/data/uploads /app/data/outputs /app/data/user /app/data/backups /app/data/logs
 
 COPY deploy/docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
