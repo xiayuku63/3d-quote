@@ -500,7 +500,7 @@
                     return;
                 }
                 // Load printer model dimensions
-                const pmSelect = document.getElementById("cfg-printer-model-main") || document.getElementById();
+                const pmSelect = document.getElementById("cfg-printer-model-main");
                 let bed_width = 256, bed_depth = 256, bed_height = 256;
                 if (pmSelect && pmSelect.value) {
                     const opt = pmSelect.selectedOptions[0];
@@ -723,14 +723,14 @@
             function refreshOptionsSummary() {
                 const colorText = formatColorLabel(quoteOptions.color);
                 if (optionsSummary) {
-                    const pm = document.getElementById();
+                    const pm = document.getElementById("cfg-printer-model-main");
                     const pmName = (pm && pm.selectedOptions[0]) ? pm.selectedOptions[0].text : "未选择";
                     optionsSummary.textContent = `打印机：${pmName} | 材料 ${quoteOptions.material}，颜色 ${colorText}，数量 ${quoteOptions.quantity}`;
                 }
             }
 
 function buildPrinterOptionsHtml(selectedId) {
-                const sel = document.getElementById() || document.getElementById();
+                const sel = document.getElementById("cfg-printer-model-main");
                 if (!sel || sel.options.length <= 1) return '<option value="">选择打印机...</option>';
                 let html = '<option value="">选择打印机...</option>';
                 for (const opt of sel.options) {
@@ -752,7 +752,7 @@ function buildPrinterOptionsHtml(selectedId) {
             async function quoteSingleFileWithOptions(file, options) {
                 const formData = new FormData();
                 formData.append("files", file);
-                const optPrinter = document.getElementById() || document.getElementById() || document.getElementById();
+                const optPrinter = document.getElementById("cfg-printer-model-main");
                 if (optPrinter && optPrinter.value) formData.append("printer_model", optPrinter.value);
                 formData.append("material", options.material);
                 formData.append("color", options.color);
@@ -1753,7 +1753,7 @@ function buildPrinterOptionsHtml(selectedId) {
             async function quoteSelectedFiles(selectedFiles) {
                 const formData = new FormData();
                 selectedFiles.forEach((file) => formData.append("files", file));
-                const pmOpt = document.getElementById() || document.getElementById();
+                const pmOpt = document.getElementById("cfg-printer-model-main");
                 if (pmOpt && pmOpt.value) formData.append("printer_model", pmOpt.value);
                 formData.append("material", quoteOptions.material);
                 formData.append("color", quoteOptions.color);
