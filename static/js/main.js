@@ -1580,9 +1580,44 @@
                 const ext = btn.getAttribute('data-preview-ext');
                 previewByFilename(filename, ext);
             });
-            batchResultsBody.addEventListener('change', async (event) => {
+            // Row edit debounce — prevent racing re-quotes
+            const _rowEditTimers = new Map();
+            const _rowEditSignals = new Map();
+
+            batchResultsBody.addEventListener('change', (event) => {
                 const target = event.target;
                 if (!target.classList.contains('row-edit')) return;
+                const row = target.closest('tr[data-row-file]');
+                if (!row) return;
+                const filename = row.getAttribute('data-row-file');
+
+                // Clear previous timer for this row
+                if (_rowEditTimers.has(filename)) {
+                    clearTimeout(_rowEditTimers.get(filename));
+                }
+                // Cancel in-flight request for this row
+                if (_rowEditSignals.has(filename)) {
+                    _rowEditSignals.get(filename).cancelled = true;
+                }
+
+                _rowEditTimers.set(filename, setTimeout(async () => {
+                    _rowEditTimers.delete(filename);
+                    const signal = { cancelled: false };
+                    _rowEditSignals.set(filename, signal);
+
+                    await _handleRowEdit(event, signal);
+
+                    if (_rowEditSignals.get(filename) === signal) {
+                        _rowEditSignals.delete(filename);
+                    }
+                }, 400));  // 400ms debounce
+            });
+
+            async function _handleRowEdit(event, signal) {
+                const target = event.target;
+                if (!target.classList.contains('row-edit')) return;
+            async function _handleRowEdit(event, signal) {
+                const target = event.target;
                 if (!authToken) {
                     errorMsg.textContent = '请先登录后再修改报价参数';
                     errorContainer.classList.remove('hidden');
@@ -1616,18 +1651,21 @@
 
                 try {
                     await ensureThumbnailForFile(file, color);
+                    if (signal.cancelled) return;
                     const updated = await quoteSingleFileWithOptions(file, { material, color, quantity });
+                    if (signal.cancelled) return;
                     const idx = currentResults.findIndex((i) => i.filename === filename);
                     if (idx >= 0) currentResults[idx] = updated;
                     renderResultsTable();
                     recalcSummaryFromCurrentResults();
                 } catch (err) {
+                    if (signal.cancelled) return;
                     errorMsg.textContent = err.message;
                     errorContainer.classList.remove('hidden');
                     row.querySelector('[data-role="status-cell"]').textContent = '重算失败';
                     row.querySelector('[data-role="status-cell"]').className = 'px-2 py-1.5 text-red-600';
                 }
-            });
+            }
 
             function mergeResultsByFilename(incomingResults) {
                 const idxByFilename = new Map();
