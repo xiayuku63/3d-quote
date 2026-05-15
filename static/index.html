@@ -105,7 +105,13 @@
                                                     </div>
                                                 </div>
 
-                                                <div class="mt-4 flex flex-col items-center justify-center">
+                                                <div class="mt-4 flex flex-col items-center justify-center gap-3">
+                                                    <div class="flex items-center gap-3">
+                                                        <label class="text-sm text-gray-600 font-medium">打印机</label>
+                                                        <select id="main-printer" class="py-1.5 px-3 border border-gray-300 bg-white rounded-md text-sm">
+                                                            <option value="">选择打印机...</option>
+                                                        </select>
+                                                    </div>
                                                     <label class="flex items-center gap-2 cursor-pointer bg-white px-4 py-2 border border-gray-200 rounded-md shadow-sm hover:bg-gray-50 transition-colors">
                                                         <input type="checkbox" id="main-use-bambu" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
                                                         <span class="text-sm text-gray-800 font-medium">使用 PrusaSlicer 切片精确估算</span>

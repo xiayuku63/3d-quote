@@ -391,7 +391,7 @@
 
             // Pre-populate printer selectors before async load
             function preloadPrinterSelectors() {
-                for (const selId of ["gen-printer-model", "gen-printer-model-2", "cfg-printer-model", "cfg-printer-model-main", "opt-printer", "opt-printer-2"]) {
+                for (const selId of ["gen-printer-model", "gen-printer-model-2", "cfg-printer-model", "cfg-printer-model-main", "opt-printer", "opt-printer-2", "main-printer"]) {
                     const sel = document.getElementById(selId);
                     if (!sel) continue;
                     sel.innerHTML = "<option value=\"\">加载中...</option>";
@@ -739,7 +739,7 @@
             async function quoteSingleFileWithOptions(file, options) {
                 const formData = new FormData();
                 formData.append("files", file);
-                const optPrinter = document.getElementById("opt-printer") || document.getElementById("opt-printer-2");
+                const optPrinter = document.getElementById("main-printer") || document.getElementById("opt-printer") || document.getElementById("opt-printer-2");
                 if (optPrinter && optPrinter.value) formData.append("printer_model", optPrinter.value);
                 formData.append("material", options.material);
                 formData.append("color", options.color);
@@ -1696,7 +1696,7 @@
             async function quoteSelectedFiles(selectedFiles) {
                 const formData = new FormData();
                 selectedFiles.forEach((file) => formData.append("files", file));
-                const pmOpt = document.getElementById("opt-printer");
+                const pmOpt = document.getElementById("main-printer") || document.getElementById("opt-printer");
                 if (pmOpt && pmOpt.value) formData.append("printer_model", pmOpt.value);
                 formData.append("material", quoteOptions.material);
                 formData.append("color", quoteOptions.color);
